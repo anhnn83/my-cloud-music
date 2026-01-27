@@ -1,0 +1,17 @@
+# 1. Bảo mật (Tuyệt đối không upload)
+.env
+credentials.json
+
+# 2. Thư viện & Hệ thống (Nặng, không cần thiết)
+node_modules/
+.DS_Store
+npm-debug.log
+
+# 3. Dữ liệu tạm & Cache (Sinh ra khi chạy)
+cache/
+temp_downloads/
+data/music.db
+data/music.db-journal
+
+# Lưu ý: Giữ lại thư mục data rỗng (nếu cần) nhưng không upload file db
+# Bạn có thể tạo file data/.gitkeep nếu muốn giữ cấu trúc thư mục

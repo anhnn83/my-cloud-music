@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tải Nhạc - My Cloud Music</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { padding: 20px; max-width: 800px; margin: 0 auto; }
+        .dl-container { background: #282828; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .dl-input { width: 100%; padding: 15px; border-radius: 8px; border: 1px solid #444; background: #333; color: white; font-size: 1.1rem; outline: none; box-sizing: border-box; }
+        
+        /* Console Log Style */
+        .console-box {
+            background-color: #000;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            color: #0f0; /* Màu xanh hacker */
+            margin-top: 20px;
+            display: none; /* Ẩn mặc định */
+        }
+        .log-line { margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+
+        /* Button Styles */
+        #btnCheck, #btnDownload {
+            background-color: #1db954; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        #btnCheck:hover, #btnDownload:hover { background-color: #1ed760; transform: scale(1.02); }
+        #btnCheck:disabled, #btnDownload:disabled { background-color: #535353; color: #b3b3b3; cursor: not-allowed; transform: none; }
+        
+        .dl-preview { display: none; background: #333; padding: 20px; border-radius: 10px; margin-top: 20px; gap: 20px; flex-wrap: wrap; }
+        .dl-thumb { width: 150px; height: 150px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+        .dl-info { flex: 1; min-width: 200px; }
+        .btn-full { width: 100%; margin-top: 15px; padding: 15px; font-size: 1.1rem; border-radius: 30px; }
+        .status-msg { margin-top: 15px; text-align: center; color: #aaa; min-height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header" style="margin-bottom: 20px; justify-content: flex-start;">
+        <button class="btn-icon-only" onclick="window.close();" title="Đóng">⬅️</button>
+        <h2 style="margin-left: 15px;">⬇️ Trình Tải Nhạc Pro</h2>
+    </div>
+
+    <div class="dl-container">
+        <p style="color: #aaa; margin-bottom: 20px;">Dán link YouTube (Video/Playlist). Hệ thống sẽ xử lý tuần tự.</p>
+        
+        <input type="text" id="dlLink" class="dl-input" placeholder="https://youtube.com/..." autofocus>
+        <button id="btnCheck" class="btn-full" onclick="checkLink()">🔎 Kiểm Tra Thông Tin</button>
+
+        <div id="dlPreview" class="dl-preview">
+            <img id="dlImg" class="dl-thumb" src="" alt="Thumbnail">
+            <div class="dl-info">
+                <h3 id="dlTitle">...</h3>
+                <p>👤 <span id="dlUploader">...</span></p>
+                <p>📂 <span id="dlType">...</span></p>
+                <p>🎵 <span id="dlCount" style="color:white; font-weight:bold;">...</span> bài hát</p>
+            </div>
+        </div>
+
+        <div id="dlControls" style="display: none; gap: 10px; margin-top: 15px;">
+            <button id="btnDownload" class="btn-full" onclick="startDownload()" style="flex: 2;">⬇️ BẮT ĐẦU</button>
+            <button id="btnStop" class="btn-full" onclick="requestStop()" style="background-color: #e74c3c; flex: 1; display: none;">🛑 DỪNG</button>
+        </div>
+
+        <div id="consoleBox" class="console-box">
+            <div style="color:white; border-bottom:1px solid #555; margin-bottom:10px;">🖥️ SYSTEM LOGS:</div>
+            <div id="logContent"></div>
+        </div>
+
+        <p id="dlStatus" class="status-msg"></p>
+    </div>
+
+    <script src="downloader.js"></script>
+</body>
+</html>

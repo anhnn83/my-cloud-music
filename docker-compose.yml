@@ -1,0 +1,34 @@
+services:
+  # --- APP SERVER ---
+  app:
+    build: .
+    container_name: music-player
+    restart: unless-stopped
+    # ports:
+    #   - "3000:3000" # Map port để máy Dev truy cập localhost:3000
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+      - ./temp_downloads:/app/temp_downloads
+      - ./credentials.json:/app/credentials.json
+      - ./src:/app/src
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 512M
+
+  # --- CLOUDFLARE TUNNEL ---
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: music-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN} # Lấy từ file .env
+    depends_on:
+      - app

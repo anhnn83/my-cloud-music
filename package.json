@@ -1,0 +1,25 @@
+{
+  "name": "my-music-cloud",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^9.0.0",
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.7.1",
+    "fastify-static": "^4.7.0",
+    "googleapis": "^170.1.0",
+    "music-metadata": "^7.13.4",
+    "undici": "^7.19.0",
+    "yt-dlp-exec": "^1.0.2"
+  }
+}

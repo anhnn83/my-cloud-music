@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+credentials.json
+data
+cache
+dist
+.DS_Store

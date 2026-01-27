@@ -1,0 +1,306 @@
+/* scr/public/style.css - Version 2.0 (Final Optimized) */
+
+/* =========================================
+   1. BIẾN MÀU SẮC & CẤU HÌNH CHUNG
+   ========================================= */
+:root {
+    --primary: #1db954;   /* Xanh lá Spotify */
+    --red: #e74c3c;       /* Đỏ yêu thích */
+    --dark: #121212;      /* Nền chính */
+    --light: #ffffff;     /* Chữ trắng */
+    --gray: #b3b3b3;      /* Chữ phụ */
+    --bar-bg: #282828;    /* Nền Player Bar */
+    --silver: #e0e0e0;    /* Nền nút Active */
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--dark);
+    color: var(--light);
+    margin: 0; padding: 0;
+    padding-bottom: 180px; /* Chừa chỗ cho Player Bar */
+    user-select: none;
+}
+
+/* =========================================
+   2. HEADER & THANH CÔNG CỤ
+   ========================================= */
+.header {
+    padding: 15px 20px;
+    position: sticky; top: 0;
+    background: rgba(18, 18, 18, 0.95);
+    backdrop-filter: blur(10px);
+    z-index: 50;
+    border-bottom: 1px solid #333;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.header h2 {
+    margin: 0 0 15px 0;
+    font-size: 1.3rem; text-align: center;
+    font-weight: 700; letter-spacing: 0.5px;
+}
+
+.controls-top {
+    display: flex; gap: 10px;
+    align-items: center; justify-content: space-between;
+    max-width: 800px; margin: 0 auto;
+    background: #222; padding: 5px;
+    border-radius: 30px; border: 1px solid #333;
+}
+
+.btn-icon-only {
+    background: transparent; border: none;
+    color: var(--light); font-size: 1.2rem;
+    width: 44px; height: 44px;
+    border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+}
+
+.btn-icon-only:active { background: #444; transform: scale(0.95); }
+.btn-icon-only:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Hiệu ứng xoay cho nút Scan */
+.spinning {
+    animation: spin 1s linear infinite;
+    pointer-events: none; /* Chặn click */
+    opacity: 0.7;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* Dropdown & Input */
+select, #searchInput {
+    background: transparent; color: white;
+    border: none; padding: 0 10px;
+    height: 44px; flex: 1; outline: none;
+    font-size: 1rem; font-weight: 500;
+    text-align: center; text-align-last: center;
+}
+select option { background-color: #333; color: white; }
+#searchInput { display: none; }
+
+/* =========================================
+   3. PLAYLIST
+   ========================================= */
+#playlist { max-width: 800px; margin: 0 auto; padding: 10px; }
+
+.song-item {
+    padding: 10px 15px;
+    border-bottom: 1px solid #2a2a2a;
+    cursor: pointer; display: flex;
+    align-items: center; justify-content: space-between;
+    border-radius: 8px; margin-bottom: 2px;
+    transition: background 0.2s;
+}
+.song-item:hover { background: #2a2a2a; }
+.song-item.active { background: #222; border-left: 4px solid var(--primary); }
+.song-item.active .song-title { color: var(--primary); font-weight: bold; }
+
+.song-info { flex: 1; overflow: hidden; margin-right: 10px; }
+.song-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 1rem; margin-bottom: 4px; }
+.song-meta { font-size: 0.85em; color: var(--gray); display: flex; gap: 8px; align-items: center; }
+.tag { background: #333; padding: 2px 8px; border-radius: 4px; color: #ddd; }
+
+/* Trái tim */
+.btn-heart { background: none; border: none; font-size: 1.3rem; cursor: pointer; padding: 10px; color: #555; transition: 0.2s; }
+.btn-heart.liked { color: var(--red); transform: scale(1.1); filter: drop-shadow(0 0 5px rgba(231,76,60,0.4)); }
+
+/* =========================================
+   4. PLAYER BAR & STATUS BAR (QUAN TRỌNG)
+   ========================================= */
+.player-bar {
+    position: fixed; bottom: 0; left: 0; width: 100%;
+    background: var(--bar-bg);
+    border-top: 1px solid #333;
+    padding: 15px 20px;
+    display: flex; flex-direction: column; align-items: center;
+    z-index: 1000; /* Luôn nổi trên cùng */
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+}
+
+/* THANH TRẠNG THÁI (STATUS BAR) */
+.status-bar {
+    position: absolute;
+    top: 0; left: 0; width: 100%;
+    /* Mặc định nằm ẩn bên dưới mép trên của player-bar */
+    transform: translateY(0); 
+    z-index: -1; /* Nằm dưới các nút bấm */
+    
+    background-color: rgba(29, 185, 84, 0.95); /* Xanh Spotify đậm */
+    color: #fff;
+    font-size: 0.85rem; font-weight: 600;
+    text-align: center;
+    padding: 6px 10px;
+    
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Hiệu ứng nảy */
+    pointer-events: none;
+}
+
+/* Khi hiện lên -> Trượt lên trên player-bar */
+.status-bar.show {
+    opacity: 1;
+    transform: translateY(-100%); /* Trượt lên 100% chiều cao của chính nó */
+    box-shadow: 0 -5px 15px rgba(0,0,0,0.3);
+}
+
+/* =========================================
+   5. CONTROLS & PROGRESS
+   ========================================= */
+.player-header { display: flex; align-items: center; width: 100%; max-width: 600px; justify-content: space-between; margin-bottom: 10px; }
+.now-playing { font-size: 1rem; color: var(--light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; text-align: center; font-weight: 500; }
+.btn-heart-player { font-size: 1.6rem; margin-left: 15px; }
+
+.progress-container { width: 100%; max-width: 600px; display: flex; align-items: center; gap: 12px; font-size: 0.85em; color: var(--gray); margin-bottom: 12px; }
+input[type=range] { flex: 1; height: 6px; background: #555; border-radius: 3px; -webkit-appearance: none; cursor: pointer; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--light); margin-top: -5px; box-shadow: 0 0 5px rgba(0,0,0,0.5); transition: transform 0.1s; }
+input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); background: var(--primary); }
+
+.audio-controls { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 400px; gap: 10px; }
+.btn-control { background: none; border: none; color: var(--gray); font-size: 1.6rem; cursor: pointer; padding: 10px; transition: 0.2s; border-radius: 50%; }
+.btn-control:hover { color: var(--light); background: rgba(255,255,255,0.05); }
+.btn-control:active { transform: scale(0.9); }
+.btn-main { font-size: 3rem; color: var(--light); padding: 0 20px; }
+
+/* Active States */
+#btnPlay.active { color: var(--primary) !important; }
+#btnShuffle.active, #btnLoop.active { color: var(--silver) !important; text-shadow: 0 0 10px rgba(255,255,255,0.4); opacity: 1; }
+
+/* =========================================
+   6. RESPONSIVE
+   ========================================= */
+@media (max-width: 600px) {
+    .header { padding: 10px; }
+    .player-bar { padding: 10px 15px; }
+    .btn-main { font-size: 2.5rem; }
+    .song-title { font-size: 0.95rem; }
+    .audio-controls { gap: 5px; max-width: 100%; }
+}
+
+/* --- GIAO DIỆN DOWNLOADER (Mới thêm) --- */
+#downloaderView {
+    display: none; /* Mặc định ẩn */
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 0 15px;
+}
+
+.dl-container { 
+    background: #222; /* Màu nền tiệp với giao diện chính */
+    padding: 30px; 
+    border-radius: 15px; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+    border: 1px solid #333;
+}
+
+.dl-input { 
+    width: 100%; padding: 15px; border-radius: 8px; 
+    border: 1px solid #444; background: #333; color: white; 
+    font-size: 1.1rem; outline: none; box-sizing: border-box; 
+}
+
+/* Console Log Style */
+.console-box {
+    background-color: #000;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 15px;
+    height: 300px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    color: #0f0; 
+    margin-top: 20px;
+    display: none;
+}
+.log-line { margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+
+/* Các nút bấm trong Downloader */
+#btnCheck, #btnDownload, .btn-full {
+    background-color: #1db954; color: white; border: none; 
+    font-weight: bold; cursor: pointer; transition: 0.2s;
+    width: 100%; margin-top: 15px; padding: 15px; 
+    font-size: 1.1rem; border-radius: 30px;
+}
+#btnCheck:hover, #btnDownload:hover { background-color: #1ed760; transform: scale(1.02); }
+#btnCheck:disabled, #btnDownload:disabled { background-color: #535353; color: #b3b3b3; cursor: not-allowed; transform: none; }
+
+.dl-preview { display: none; background: #333; padding: 20px; border-radius: 10px; margin-top: 20px; gap: 20px; flex-wrap: wrap; }
+.dl-thumb { width: 150px; height: 150px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+.dl-info { flex: 1; min-width: 200px; }
+.status-msg { margin-top: 15px; text-align: center; color: #aaa; min-height: 20px; }
+
+/* Style cho khu vực cài đặt mới */
+.playback-settings {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: #b3b3b3;
+}
+
+.setting-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.setting-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.setting-item input[type="checkbox"] {
+    margin-right: 5px;
+    cursor: pointer;
+}
+
+.setting-item input[type="number"] {
+    background: #333;
+    border: 1px solid #555;
+    color: white;
+    border-radius: 4px;
+    padding: 2px;
+    font-size: 0.8rem;
+    outline: none;
+}
+
+/* --- [MỚI] STYLE CHO CHỮ CHẠY VÔ TẬN (SEAMLESS MARQUEE) --- */
+/* 1. Khung hiển thị chính */
+.now-playing {
+    display: flex;              /* Dùng Flex để căn chỉnh */
+    align-items: center;
+    overflow: hidden;           /* Ẩn phần chữ tràn ra ngoài */
+    mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+}
+
+/* 2. Wrapper chứa 4 bản copy của tên bài hát */
+.marquee-wrapper {
+    display: flex;
+    white-space: nowrap;        /* Không xuống dòng */
+    /* Animation di chuyển */
+    animation: seamless-scroll 10s linear infinite; 
+}
+
+/* 3. Style cho từng cụm tên bài hát */
+.marquee-wrapper span {
+    display: inline-block;
+    padding-right: 0;           /* Khoảng cách đã được xử lý bằng &nbsp; trong JS */
+    font-weight: bold;          /* In đậm cho đẹp */
+}
+
+/* 4. Định nghĩa chuyển động lặp vô tận */
+/* Logic: Vì ta có 4 bản copy, ta chỉ cần dịch chuyển 25% (tức là chiều dài 1 bản copy) 
+   rồi reset về 0 ngay lập tức. Mắt người sẽ không thấy sự giật cục này. */
+@keyframes seamless-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-25%); } /* Dịch chuyển đúng chiều dài 1 cụm tên */
+}
