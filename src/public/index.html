@@ -71,14 +71,22 @@
                 </div>
             </div>
 
+            <div id="videoListBox" class="video-list-box"></div>
+
+            <div id="dlControls" style="display: none; flex-direction: column; gap: 10px; margin-top: 15px;">
+                <div style="display: flex; gap: 10px;">
+                    <button id="btnDownloadAll" class="btn-full" onclick="startDownload('all')" style="margin-top:0; flex: 1;">⬇️ TẢI TOÀN BỘ</button>
+                    <button id="btnSelectMode" class="btn-full btn-outline" onclick="toggleSelectionMode()" style="margin-top:0; flex: 1; display:none;">📝 TẢI TÙY CHỌN</button>
+                </div>
+                
+                <button id="btnDownloadSelected" class="btn-full" onclick="startDownload('selected')" style="margin-top:0; display:none;">⬇️ TẢI CÁC BÀI ĐÃ CHỌN</button>
+                
+                <button id="btnStop" class="btn-full" onclick="requestStop()" style="background-color: #e74c3c; display: none; margin-top:0;">🛑 DỪNG LẠI</button>
+            </div>
+
             <div id="consoleBox" class="console-box">
                 <div style="color:white; border-bottom:1px solid #555; margin-bottom:10px;">🖥️ SYSTEM LOGS:</div>
                 <div id="logContent"></div>
-            </div>
-
-            <div id="dlControls" style="display: none; gap: 10px; margin-top: 15px;">
-                <button id="btnDownload" class="btn-full" onclick="startDownload()" style="flex: 2;">⬇️ BẮT ĐẦU TIẾN TRÌNH</button>
-                <button id="btnStop" class="btn-full" onclick="requestStop()" style="background-color: #e74c3c; flex: 1; display: none;">🛑 DỪNG LẠI</button>
             </div>
 
             <p id="dlStatus" class="status-msg"></p>

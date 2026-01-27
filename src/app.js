@@ -1,4 +1,4 @@
-// src/app.js - Version 5.3
+// src/app.js - Version 5.4
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -151,6 +151,33 @@ fastify.get('/api/scan/status', async (request, reply) => {
     return getScanStatus();
 });
 
+// [MỚI] API Lấy cài đặt playback
+fastify.get('/api/settings', async (request, reply) => {
+    const settings = db.prepare('SELECT * FROM user_settings WHERE id = 1').get();
+    return settings;
+});
+
+// [MỚI] API Lưu cài đặt playback
+fastify.post('/api/settings', async (request, reply) => {
+    const { playFromStart, skipMode, skipStart, skipEnd } = request.body;
+    
+    const stmt = db.prepare(`
+        UPDATE user_settings 
+        SET play_from_start = ?, skip_mode = ?, skip_start = ?, skip_end = ?
+        WHERE id = 1
+    `);
+    
+    // Chuyển boolean (true/false) sang integer (1/0) cho SQLite
+    stmt.run(
+        playFromStart ? 1 : 0, 
+        skipMode ? 1 : 0, 
+        parseInt(skipStart) || 0, 
+        parseInt(skipEnd) || 0
+    );
+    
+    return { status: 'saved' };
+});
+
 // [MỚI] API Lấy thông tin trước khi tải (Preview)
 fastify.post('/api/preview', async (request, reply) => {
     const { url } = request.body;
@@ -166,7 +193,8 @@ fastify.post('/api/preview', async (request, reply) => {
 
 // 2. [MỚI] API Tải nhạc từ YouTube
 fastify.post('/api/download', async (request, reply) => {
-    const { url } = request.body;
+    // Lấy thêm indices (chuỗi "1,3,5...") từ Frontend gửi lên
+    const { url, indices } = request.body;
     
     // Kiểm tra xem có đang bận không
     const currentStatus = getStatus();
@@ -178,8 +206,8 @@ fastify.post('/api/download', async (request, reply) => {
         return reply.code(400).send({ error: 'Link không hợp lệ' });
     }
 
-    // Chạy ngầm
-    processDownload(url);
+    // [QUAN TRỌNG] Truyền indices vào hàm xử lý
+    processDownload(url, indices);
 
     return { status: 'started', message: 'Đã bắt đầu tiến trình.' };
 });

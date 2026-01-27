@@ -680,32 +680,39 @@ function savePlaybackSettings() {
         skipStart: document.getElementById('inpSkipStart').value,
         skipEnd: document.getElementById('inpSkipEnd').value
     };
-    localStorage.setItem('myCloudMusicSettings', JSON.stringify(settings));
+    
+    // Gọi API lưu (Không cần await vì chạy ngầm cũng được)
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+    }).catch(console.error);
 }
 
 // 3. Hàm load (Đã cập nhật bộ lọc thông minh)
-function loadPlaybackSettings() {
-    const saved = localStorage.getItem('myCloudMusicSettings');
-    if (saved) {
-        const settings = JSON.parse(saved);
-        const cbStart = document.getElementById('cbPlayFromStart');
-        const cbSkip = document.getElementById('cbSkipMode');
+async function loadPlaybackSettings() {
+    try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+        
+        if (settings) {
+            const cbStart = document.getElementById('cbPlayFromStart');
+            const cbSkip = document.getElementById('cbSkipMode');
+            
+            // Database trả về 1/0, cần chuyển thành boolean
+            cbStart.checked = settings.play_from_start === 1;
+            cbSkip.checked = settings.skip_mode === 1;
+            
+            document.getElementById('inpSkipStart').value = settings.skip_start;
+            document.getElementById('inpSkipEnd').value = settings.skip_end;
 
-        // 1. Load giá trị từ bộ nhớ
-        cbStart.checked = settings.playFromStart || false;
-        cbSkip.checked = settings.skipMode || false;
-
-        // 2. [FIX QUAN TRỌNG] Kiểm tra xung đột dữ liệu cũ
-        // Nếu phát hiện cả 2 đều đang bật -> Tự động tắt bớt "Phát từ đầu"
-        if (cbStart.checked && cbSkip.checked) {
-            console.warn("Phát hiện xung đột setting cũ. Đang tự động sửa...");
-            cbStart.checked = false; 
-            savePlaybackSettings(); // Lưu lại trạng thái chuẩn ngay lập tức
+            // Kiểm tra xung đột logic (như cũ)
+            if (cbStart.checked && cbSkip.checked) {
+                cbStart.checked = false;
+                savePlaybackSettings();
+            }
         }
-
-        document.getElementById('inpSkipStart').value = settings.skipStart || 5;
-        document.getElementById('inpSkipEnd').value = settings.skipEnd || 10;
-    }
+    } catch (e) { console.error("Không thể tải cài đặt:", e); }
 }
 
 // Gọi hàm này ngay khi khởi tạo

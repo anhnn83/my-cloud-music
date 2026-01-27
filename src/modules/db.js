@@ -39,6 +39,20 @@ db.exec(`
   )
 `);
 
+// [MỚI] Bảng cài đặt người dùng (User Settings)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1), -- Chỉ cho phép 1 dòng duy nhất
+    play_from_start INTEGER DEFAULT 0,
+    skip_mode INTEGER DEFAULT 0,
+    skip_start INTEGER DEFAULT 5,
+    skip_end INTEGER DEFAULT 10
+  )
+`);
+
+// Tạo sẵn dữ liệu mặc định nếu chưa có
+db.exec(`INSERT OR IGNORE INTO user_settings (id) VALUES (1)`);
+
 console.log('✅ Database đã sẵn sàng (SQLite): music.db');
 
 module.exports = { db };

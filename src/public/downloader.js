@@ -1,12 +1,14 @@
-// src/public/downloader.js - Version 3.6 (UI Fixed)
+// src/public/downloader.js - Version 4.0 (Partial Download Support)
 
 const input = document.getElementById('dlLink');
 const preview = document.getElementById('dlPreview');
-// [MỚI] Lấy thêm khung điều khiển
 const controls = document.getElementById('dlControls');
+const videoListBox = document.getElementById('videoListBox');
 
 const btnCheck = document.getElementById('btnCheck');
-const btnDownload = document.getElementById('btnDownload');
+const btnDownloadAll = document.getElementById('btnDownloadAll');
+const btnSelectMode = document.getElementById('btnSelectMode');
+const btnDownloadSelected = document.getElementById('btnDownloadSelected');
 const btnStop = document.getElementById('btnStop');
 
 const statusMsg = document.getElementById('dlStatus');
@@ -14,6 +16,7 @@ const consoleBox = document.getElementById('consoleBox');
 const logContent = document.getElementById('logContent');
 
 let validUrl = '';
+let currentPlaylistItems = []; // Lưu danh sách bài hát trả về từ API
 let pollInterval = null;
 
 input.addEventListener("keypress", (e) => { if (e.key === "Enter") checkLink(); });
@@ -33,20 +36,17 @@ input.addEventListener("keypress", (e) => { if (e.key === "Enter") checkLink(); 
 function restoreProcessingUI() {
     input.style.display = 'none';
     btnCheck.style.display = 'none';
+    preview.style.display = 'none';
+    videoListBox.style.display = 'none';
     
-    // Ẩn Preview khi F5 vì dữ liệu title/img đã mất, nhìn sẽ bị lỗi
-    preview.style.display = 'none'; 
-    
-    // Hiện khung nút bấm
     controls.style.display = 'flex';
+    btnDownloadAll.style.display = 'none';
+    btnSelectMode.style.display = 'none';
+    btnDownloadSelected.style.display = 'none';
     
-    btnDownload.style.display = 'none';
     btnStop.style.display = 'block';
     btnStop.innerText = '🛑 DỪNG';
     btnStop.disabled = false;
-
-    const guideText = document.querySelector('.dl-container p');
-    if(guideText) guideText.style.display = 'none';
 
     consoleBox.style.display = 'block';
     statusMsg.innerText = '🔄 Đang chạy tiến trình...';
@@ -54,10 +54,10 @@ function restoreProcessingUI() {
 }
 
 async function requestStop() {
-    if(!confirm('Bạn chắc chắn muốn dừng? Bài đang tải dở sẽ được hoàn thành nốt.')) return;
+    if(!confirm('Bạn chắc chắn muốn dừng?')) return;
     btnStop.disabled = true;
     btnStop.innerText = '⏳ Đang dừng...';
-    try { await fetch('/api/download/stop', { method: 'POST' }); } catch (e) { console.error(e); }
+    try { await fetch('/api/download/stop', { method: 'POST' }); } catch (e) {}
 }
 
 function resetUI() {
@@ -67,17 +67,53 @@ function resetUI() {
     btnCheck.disabled = false;
     btnCheck.innerText = '🔎 Kiểm Tra Thông Tin';
     
-    const guideText = document.querySelector('.dl-container p');
-    if(guideText) guideText.style.display = 'block';
-
     preview.style.display = 'none';
-    controls.style.display = 'none'; // Ẩn nút
+    videoListBox.style.display = 'none';
+    videoListBox.innerHTML = ''; // Xóa danh sách cũ
+    controls.style.display = 'none';
     
     validUrl = '';
+    currentPlaylistItems = [];
     if(pollInterval) clearInterval(pollInterval);
 }
 
-// --- LOGIC ---
+// --- LOGIC MỚI: XỬ LÝ CHECKBOX ---
+function toggleSelectionMode() {
+    // Ẩn nút "Tải Toàn Bộ" và nút "Tải Tùy Chọn"
+    btnDownloadAll.style.display = 'none';
+    btnSelectMode.style.display = 'none';
+    
+    // Hiện nút "Tải các bài đã chọn"
+    btnDownloadSelected.style.display = 'block';
+    
+    // Render danh sách checkbox
+    renderVideoList();
+    videoListBox.style.display = 'block';
+}
+
+function renderVideoList() {
+    videoListBox.innerHTML = '';
+    if (!currentPlaylistItems || currentPlaylistItems.length === 0) {
+        videoListBox.innerHTML = '<div style="padding:15px; text-align:center; color:#777;">Không tìm thấy danh sách bài hát chi tiết.</div>';
+        return;
+    }
+
+    currentPlaylistItems.forEach((item, index) => {
+        // item có dạng: { title: "Tên bài", id: "VIDEO_ID", ... }
+        // Index trong yt-dlp bắt đầu từ 1
+        const realIndex = index + 1;
+        
+        const div = document.createElement('div');
+        div.className = 'video-item';
+        div.innerHTML = `
+            <input type="checkbox" id="chk-${realIndex}" value="${realIndex}">
+            <label for="chk-${realIndex}"><b>#${realIndex}</b>. ${item.title || 'Unknown Track'}</label>
+        `;
+        videoListBox.appendChild(div);
+    });
+}
+
+// --- LOGIC CHÍNH ---
 
 async function checkLink() {
     const url = input.value.trim();
@@ -97,26 +133,44 @@ async function checkLink() {
         const data = await res.json();
 
         if (res.ok) {
-            // Fill data
-            document.getElementById('dlTitle').innerText = data.data.title;
-            document.getElementById('dlUploader').innerText = data.data.uploader;
-            document.getElementById('dlType').innerText = data.data.type;
-            document.getElementById('dlCount').innerText = data.data.count;
+            // Fill Info
+            const info = data.data;
+            document.getElementById('dlTitle').innerText = info.title;
+            document.getElementById('dlUploader').innerText = info.uploader;
+            document.getElementById('dlType').innerText = info.type;
+            document.getElementById('dlCount').innerText = info.count;
             const img = document.getElementById('dlImg');
-            if(data.data.thumbnail) { img.src = data.data.thumbnail; img.style.display='block'; }
+            if(info.thumbnail) { img.src = info.thumbnail; img.style.display='block'; }
             
+            // Lưu lại danh sách bài hát (Nếu backend trả về)
+            currentPlaylistItems = info.items || [];
+            validUrl = info.url;
+
             // UI Switch
             input.style.display = 'none';
             btnCheck.style.display = 'none';
+            preview.style.display = 'flex';
+            controls.style.display = 'flex';
             
-            preview.style.display = 'flex';   // Hiện thông tin
-            controls.style.display = 'flex';  // Hiện nút bấm
-            
-            // Reset nút về trạng thái Bắt đầu
-            btnDownload.style.display = 'block';
+            // Reset buttons
             btnStop.style.display = 'none';
-            
-            validUrl = data.data.url;
+            btnDownloadSelected.style.display = 'none';
+            videoListBox.style.display = 'none';
+
+            // [LOGIC QUYẾT ĐỊNH HIỂN THỊ NÚT]
+            if (info.type === 'playlist' && info.count > 2) {
+                // Nếu là playlist > 2 bài -> Hiện cả 2 nút
+                btnDownloadAll.style.display = 'block';
+                btnDownloadAll.innerText = '⬇️ TẢI TOÀN BỘ (' + info.count + ')';
+                
+                btnSelectMode.style.display = 'block'; // Hiện nút Tải tùy chọn
+            } else {
+                // Nếu là video lẻ hoặc playlist ít bài -> Chỉ hiện nút Tải (như cũ)
+                btnDownloadAll.style.display = 'block';
+                btnDownloadAll.innerText = '⬇️ BẮT ĐẦU TIẾN TRÌNH';
+                btnSelectMode.style.display = 'none';
+            }
+
             statusMsg.innerText = '';
         } else {
             throw new Error(data.error);
@@ -130,27 +184,41 @@ async function checkLink() {
     }
 }
 
-async function startDownload() {
+async function startDownload(mode) {
     if (!validUrl) return;
+    
+    let payload = { url: validUrl };
 
-    // Chuyển nút sang trạng thái Stop
-    btnDownload.style.display = 'none';
+    // XỬ LÝ CHẾ ĐỘ TÙY CHỌN
+    if (mode === 'selected') {
+        const checkboxes = document.querySelectorAll('.video-item input[type="checkbox"]:checked');
+        if (checkboxes.length === 0) {
+            alert("Vui lòng chọn ít nhất 1 bài hát!");
+            return;
+        }
+        
+        // Tạo chuỗi indices (Ví dụ: "1,3,5,10")
+        const indices = Array.from(checkboxes).map(cb => cb.value).join(',');
+        payload.indices = indices; // Gửi kèm danh sách index lên server
+        
+        videoListBox.style.display = 'none'; // Ẩn list đi cho gọn
+    }
+
+    // UI Updates
+    controls.style.display = 'flex'; // Đảm bảo hiện khung
+    btnDownloadAll.style.display = 'none';
+    btnSelectMode.style.display = 'none';
+    btnDownloadSelected.style.display = 'none';
+    
     btnStop.style.display = 'block';
-
-    // Ẩn khung thông tin để tập trung vào Console
     preview.style.display = 'none';
-    
-    // Hiện Console
     consoleBox.style.display = 'block';
-    
-    const guideText = document.querySelector('.dl-container p');
-    if(guideText) guideText.style.display = 'none';
 
     try {
         const res = await fetch('/api/download', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: validUrl })
+            body: JSON.stringify(payload)
         });
 
         const data = await res.json();
@@ -159,14 +227,7 @@ async function startDownload() {
             startPolling();
         } else {
             logContent.innerHTML += `<div class="log-line" style="color:red">${data.error}</div>`;
-            if (data.error.includes('đang bận')) {
-                setTimeout(() => {
-                    restoreProcessingUI();
-                    startPolling();
-                }, 2000);
-            } else {
-                setTimeout(resetUI, 3000);
-            }
+            setTimeout(resetUI, 3000);
         }
     } catch (e) {
         statusMsg.innerText = '❌ Lỗi kết nối';
@@ -176,13 +237,11 @@ async function startDownload() {
 
 function startPolling() {
     if (pollInterval) clearInterval(pollInterval);
-    
     pollInterval = setInterval(async () => {
         try {
             const res = await fetch('/api/download/status');
             const state = await res.json();
             
-            // 1. Vẽ Logs
             if (state.logs && state.logs.length > 0) {
                 logContent.innerHTML = state.logs.map(l => {
                     let color = '#0f0'; 
@@ -190,55 +249,28 @@ function startPolling() {
                     if (l.includes('⬇️')) color = '#3498db'; 
                     if (l.includes('☁️')) color = '#f1c40f'; 
                     if (l.includes('✅')) color = '#2ecc71';
-                    if (l.includes('⚠️')) color = '#e67e22'; // Màu cam cho cảnh báo
                     return `<div class="log-line" style="color:${color}">${l}</div>`;
                 }).join('');
                 consoleBox.scrollTop = consoleBox.scrollHeight;
             }
 
-            // 2. [LOGIC MỚI] Kiểm tra trạng thái
-            // Nếu Backend báo đã ngừng xử lý (isProcessing = false) -> KẾT THÚC NGAY
             if (!state.isProcessing) {
                 clearInterval(pollInterval);
+                statusMsg.innerText = '✅ Quy trình hoàn tất/đã dừng!';
+                statusMsg.style.color = '#1db954';
                 
-                const lastLog = state.logs.length > 0 ? state.logs[state.logs.length - 1] : '';
-
-                // Phân loại thông báo dựa trên log cuối
-                if (lastLog.includes('HOÀN TẤT')) {
-                    statusMsg.innerText = '✅ Quy trình hoàn tất!';
-                    statusMsg.style.color = '#1db954';
-                } else if (lastLog.includes('DỪNG') || lastLog.includes('hủy')) {
-                    // Bắt thêm từ khóa 'hủy' để khớp với log backend
-                    statusMsg.innerText = '🛑 Đã dừng quy trình.';
-                    statusMsg.style.color = '#e74c3c';
-                } else {
-                    statusMsg.innerText = '⚠️ Quy trình kết thúc (Có lỗi hoặc đã dừng).';
-                    statusMsg.style.color = '#f1c40f';
-                }
-                
-                // [QUAN TRỌNG] Reset lại nút bấm
                 btnStop.style.display = 'none';
-                btnDownload.style.display = 'block'; // Hiện lại nút Bắt đầu
-                btnDownload.innerText = '⬇️ BẮT ĐẦU TIẾN TRÌNH';
-                btnDownload.disabled = false;
                 
                 // Hiện nút tải bài khác
-                setTimeout(() => {
-                    const existingBtn = document.getElementById('btnReset');
-                    if (!existingBtn) {
-                        const btnReset = document.createElement('button');
-                        btnReset.id = 'btnReset';
-                        btnReset.className = 'btn-full';
-                        btnReset.innerText = '🔎 Tải bài khác';
-                        btnReset.style.backgroundColor = '#333';
-                        btnReset.onclick = () => {
-                            btnReset.remove();
-                            resetUI();
-                            statusMsg.innerText = '';
-                        };
-                        consoleBox.after(btnReset);
-                    }
-                }, 1000);
+                if(!document.getElementById('btnReset')) {
+                    const btnReset = document.createElement('button');
+                    btnReset.id = 'btnReset';
+                    btnReset.className = 'btn-full';
+                    btnReset.innerText = '🔎 Tải tiếp bài khác';
+                    btnReset.style.backgroundColor = '#333';
+                    btnReset.onclick = () => { btnReset.remove(); resetUI(); statusMsg.innerText = ''; };
+                    consoleBox.after(btnReset);
+                }
             }
         } catch (e) { console.error(e); }
     }, 1000); 
