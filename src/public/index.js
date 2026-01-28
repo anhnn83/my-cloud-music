@@ -1,4 +1,4 @@
-// src/public/index.js - Version 2.7
+// src/public/index.js - Version 2.8
 console.log("--- src/public/index.js - Version 2.7 ---");
 
 let scanInterval = null;
@@ -20,7 +20,7 @@ async function init() {
         document.getElementById('count').innerText = data.total;
 
         // Tạo danh sách thư mục
-        const folders = [...new Set(allSongs.map(s => s.folder_path))];
+        const folders = [...new Set(allSongs.map(s => (s.folder_path || 'Root').trim()))];
         const select = document.getElementById('folderFilter');
         while (select.options.length > 2) select.remove(2);
         folders.sort().forEach(f => {
@@ -515,11 +515,22 @@ function searchSongs() {
 }
 
 function filterPlaylist() {
-    const f = document.getElementById('folderFilter').value;
+    const rawF = document.getElementById('folderFilter').value;
+    const f = rawF ? rawF.trim() : 'all';
+
     document.getElementById('searchInput').value = '';
-    if (f === 'all') currentPlaylist = [...allSongs];
-    else if (f === 'favorites') currentPlaylist = allSongs.filter(s => s.is_favorite === 1);
-    else currentPlaylist = allSongs.filter(s => s.folder_path === f);
+
+    if (f === 'all') {
+        currentPlaylist = [...allSongs];
+    } else if (f === 'favorites') {
+        currentPlaylist = allSongs.filter(s => s.is_favorite === 1);
+    } else {
+        // [SỬA LỖI] So sánh mềm dẻo hơn (chính xác từng ký tự sau khi trim)
+        currentPlaylist = allSongs.filter(s => {
+            const songFolder = (s.folder_path || '').trim();
+            return songFolder === f;
+        });
+    }
     
     if(isShuffle) toggleShuffle(); 
     else {
