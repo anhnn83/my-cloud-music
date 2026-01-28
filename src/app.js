@@ -1,4 +1,4 @@
-// src/app.js - Version 5.4
+// src/app.js - Version 6.0
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -157,22 +157,25 @@ fastify.get('/api/settings', async (request, reply) => {
     return settings;
 });
 
-// [MỚI] API Lưu cài đặt playback
+// [CẬP NHẬT] API Lưu cài đặt playback (Bao gồm cả Shuffle/Repeat)
 fastify.post('/api/settings', async (request, reply) => {
-    const { playFromStart, skipMode, skipStart, skipEnd } = request.body;
+    // Nhận thêm isShuffle và loopMode từ client
+    const { playFromStart, skipMode, skipStart, skipEnd, isShuffle, loopMode } = request.body;
     
     const stmt = db.prepare(`
         UPDATE user_settings 
-        SET play_from_start = ?, skip_mode = ?, skip_start = ?, skip_end = ?
+        SET play_from_start = ?, skip_mode = ?, skip_start = ?, skip_end = ?,
+            shuffle_mode = ?, repeat_mode = ?
         WHERE id = 1
     `);
     
-    // Chuyển boolean (true/false) sang integer (1/0) cho SQLite
     stmt.run(
         playFromStart ? 1 : 0, 
         skipMode ? 1 : 0, 
         parseInt(skipStart) || 0, 
-        parseInt(skipEnd) || 0
+        parseInt(skipEnd) || 0,
+        isShuffle ? 1 : 0,    // [MỚI]
+        parseInt(loopMode) || 0 // [MỚI]
     );
     
     return { status: 'saved' };
@@ -193,21 +196,20 @@ fastify.post('/api/preview', async (request, reply) => {
 
 // 2. [MỚI] API Tải nhạc từ YouTube
 fastify.post('/api/download', async (request, reply) => {
-    // Lấy thêm indices (chuỗi "1,3,5...") từ Frontend gửi lên
-    const { url, indices } = request.body;
+    // Lấy thêm formatId
+    const { url, indices, formatId } = request.body;
     
-    // Kiểm tra xem có đang bận không
     const currentStatus = getStatus();
     if (currentStatus.isProcessing) {
-        return reply.code(409).send({ error: '⚠️ Hệ thống đang bận tải một danh sách khác. Vui lòng đợi xong.' });
+        return reply.code(409).send({ error: '⚠️ Hệ thống đang bận tải một danh sách khác.' });
     }
 
     if (!url || (!url.includes('youtube.com') && !url.includes('youtu.be'))) {
         return reply.code(400).send({ error: 'Link không hợp lệ' });
     }
 
-    // [QUAN TRỌNG] Truyền indices vào hàm xử lý
-    processDownload(url, indices);
+    // Truyền formatId vào hàm xử lý
+    processDownload(url, indices, formatId);
 
     return { status: 'started', message: 'Đã bắt đầu tiến trình.' };
 });
@@ -225,9 +227,35 @@ fastify.get('/api/download/status', async (request, reply) => {
 
 // 3. Lấy danh sách bài hát
 fastify.get('/api/songs', async (request, reply) => {
+    // Lấy danh sách từ DB
     const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id ORDER BY s.folder_path, s.name`);
     const songs = stmt.all();
+
+    // [MỚI] Kiểm tra nhanh xem file đã có trong thư mục cache chưa
+    // Lưu ý: Sync check ở đây với 2000 bài có thể hơi chậm, nhưng chấp nhận được với SSD.
+    // Nếu muốn nhanh hơn, hãy dùng biến toàn cục Set() lưu danh sách cache như module scanner.
+    songs.forEach(s => {
+        const checkPath = path.join(CACHE_ROOT, `${s.id}.mp3`);
+        s.is_cached = fs.existsSync(checkPath); // Gắn cờ true/false
+    });
+
     return { total: songs.length, data: songs };
+});
+
+// [MỚI] API Lấy danh sách ID các file đã được cache
+fastify.get('/api/cache-list', async (request, reply) => {
+    try {
+        if (!fs.existsSync(CACHE_ROOT)) return [];
+        // Đọc thư mục cache
+        const files = await fs.promises.readdir(CACHE_ROOT);
+        // Chỉ lấy tên file (bỏ đuôi .mp3) -> chính là Song ID
+        const cachedIds = files
+            .filter(f => f.endsWith('.mp3'))
+            .map(f => f.replace('.mp3', ''));
+        return cachedIds;
+    } catch (e) {
+        return [];
+    }
 });
 
 // 4. Stream nhạc (Manual Stream)
@@ -311,6 +339,94 @@ fastify.post('/api/favorite/toggle', async (request, reply) => {
 
 setInterval(cleanCache, 12 * 60 * 60 * 1000);
 cleanCache();
+
+// --- [MỚI] HỆ THỐNG ĐIỂM NHIỆT (TRENDING SYSTEM) ---
+// 1. API Cộng điểm (Gọi khi nghe hết bài)
+fastify.post('/api/trend/add', async (request, reply) => {
+    const { songId } = request.body;
+    if (!songId) return;
+
+    // Cộng 10 điểm cho bài hát
+    const stmt = db.prepare('UPDATE songs SET trending_score = trending_score + 10 WHERE id = ?');
+    stmt.run(songId);
+    
+    return { status: 'boosted' };
+});
+
+// 2. API Lấy Top 100 Trending
+fastify.get('/api/songs/top100', async (request, reply) => {
+    try {
+        // 1. Lấy toàn bộ bài hát từ DB
+        const stmt = db.prepare(`
+            SELECT s.*, h.current_time 
+            FROM songs s 
+            LEFT JOIN playback_history h ON s.id = h.song_id 
+        `);
+        const allSongs = stmt.all();
+
+        // 2. Lấy danh sách các file đang có trong Cache
+        const cacheDir = path.join(__dirname, '../cache');
+        let cachedSet = new Set();
+        try {
+            // Đọc thư mục cache 1 lần duy nhất (nhanh hơn check từng file)
+            const files = await fs.promises.readdir(cacheDir);
+            files.forEach(f => {
+                if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
+            });
+        } catch (e) { console.error("Cache read error:", e); }
+
+        // 3. Phân loại vào 3 giỏ ưu tiên
+        const bucketTrending = [];
+        const bucketCached = [];
+        const bucketRandom = [];
+
+        allSongs.forEach(song => {
+            // Đánh dấu cache để Frontend hiển thị icon lun
+            song.is_cached = cachedSet.has(song.id);
+
+            if (song.trending_score > 0) {
+                // Ưu tiên 1: Có điểm nhiệt
+                bucketTrending.push(song);
+            } else if (song.is_cached) {
+                // Ưu tiên 2: Chưa có điểm nhưng đã Cache (để nghe offline)
+                bucketCached.push(song);
+            } else {
+                // Ưu tiên 3: Còn lại
+                bucketRandom.push(song);
+            }
+        });
+
+        // 4. Sắp xếp nội bộ từng giỏ
+        
+        // Giỏ 1: Điểm cao xếp trước
+        bucketTrending.sort((a, b) => b.trending_score - a.trending_score);
+        
+        // Giỏ 2: Không cần sort (hoặc sort theo tên nếu muốn)
+        
+        // Giỏ 3: Trộn ngẫu nhiên (Shuffle) để mỗi lần vào Top 100 thấy mới lạ
+        for (let i = bucketRandom.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [bucketRandom[i], bucketRandom[j]] = [bucketRandom[j], bucketRandom[i]];
+        }
+
+        // 5. Gộp lại và cắt lấy 100 bài
+        const finalTop100 = [...bucketTrending, ...bucketCached, ...bucketRandom].slice(0, 100);
+
+        return finalTop100;
+        
+    } catch (e) {
+        console.error("Top 100 Error:", e);
+        return [];
+    }
+});
+
+// 3. Cơ chế "Hạ nhiệt" (Decay) - Chạy mỗi 24 giờ
+// Giảm 10% điểm của tất cả bài hát để các bài cũ từ từ rớt hạng
+setInterval(() => {
+    console.log('📉 [Trending] Đang hạ nhiệt điểm số bài hát (-10%)...');
+    // Chỉ giảm những bài đang có điểm > 0.1 để tránh số quá nhỏ vô nghĩa
+    db.prepare("UPDATE songs SET trending_score = trending_score * 0.9 WHERE trending_score > 0.1").run();
+}, 24 * 60 * 60 * 1000); // 24 giờ
 
 const start = async () => {
     try { await fastify.listen({ port: PORT, host: '0.0.0.0' }); console.log(`🚀 Server: http://localhost:${PORT}`); }

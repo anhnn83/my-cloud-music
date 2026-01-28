@@ -254,7 +254,7 @@ async function scanNewFile(fileId) {
                     fields: 'name',
                     supportsAllDrives: true
                 });
-                folderName = parentRes.data.name;
+                folderName = parentRes.data.name.trim();
             } catch(e) {}
         }
 

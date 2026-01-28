@@ -1,5 +1,5 @@
-// src/public/index.js - Version 2.8
-console.log("--- src/public/index.js - Version 2.7 ---");
+// src/public/index.js - Version 3.0
+console.log("--- src/public/index.js - Version 3.0 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -12,28 +12,80 @@ let pendingNextIndex = -1;
 let isPreloaded = false;
 
 // --- 1. KHỞI TẠO ---
+// --- src/public/index.js ---
+
 async function init() {
     try {
+        // 1. Lấy danh sách bài hát từ Server
+        // API này đã được cập nhật để trả về cả thông tin cache (nếu có)
         const res = await fetch('/api/songs');
         const data = await res.json();
+        
+        // Lưu vào biến toàn cục
         allSongs = data.data; 
         document.getElementById('count').innerText = data.total;
 
-        // Tạo danh sách thư mục
+        // 2. Tạo Menu lọc (Dropdown)
+        // Logic: Lấy danh sách folder duy nhất -> Trim khoảng trắng -> Sắp xếp
         const folders = [...new Set(allSongs.map(s => (s.folder_path || 'Root').trim()))];
+        
         const select = document.getElementById('folderFilter');
-        while (select.options.length > 2) select.remove(2);
+        select.innerHTML = ''; // Xóa sạch option cũ để tạo lại từ đầu
+
+        // Option A: Tất cả
+        const optAll = document.createElement('option');
+        optAll.value = 'all'; 
+        optAll.innerText = '📁 Tất cả thư mục';
+        select.appendChild(optAll);
+
+        // Option B: Yêu thích
+        const optFav = document.createElement('option');
+        optFav.value = 'favorites'; 
+        optFav.innerText = '❤️ Bài hát yêu thích';
+        select.appendChild(optFav);
+
+        // Option C: [MỚI] Top 100 Trending
+        const optTop = document.createElement('option');
+        optTop.value = 'top100'; 
+        optTop.innerText = '🔥 Top 100 Thường nghe';
+        select.appendChild(optTop);
+
+        // Option D: Các thư mục thực tế từ Drive
         folders.sort().forEach(f => {
             const opt = document.createElement('option');
             opt.value = f; 
+            // Thêm icon folder cho đẹp
             opt.innerText = f.replace('/', '📁 '); 
             select.appendChild(opt);
         });
 
+        // 3. Hiển thị mặc định
         currentPlaylist = [...allSongs];
-        renderPlaylist();
-        checkLastSession();
-    } catch (e) { console.error(e); }
+        renderPlaylist(); // Hàm render mới (có thanh progress và icon cache)
+
+        // 4. Khôi phục các cài đặt từ Server (Shuffle, Loop, Intro/Outro...)
+        if (typeof loadPlaybackSettings === 'function') {
+            await loadPlaybackSettings();
+        }
+
+        // 5. Khôi phục phiên nghe trước đó (Bài đang nghe dở)
+        await checkLastSession();
+        
+        // 6. Kích hoạt đồng bộ trạng thái Cache Realtime
+        if (typeof startCacheSync === 'function') {
+             // Đảm bảo chỉ chạy 1 lần
+             if (!window.hasStartedCacheSync) {
+                 startCacheSync();
+                 window.hasStartedCacheSync = true;
+             }
+        }
+
+    } catch (e) { 
+        console.error("Lỗi khởi tạo:", e);
+        if (typeof showStatus === 'function') {
+            showStatus("❌ Lỗi tải dữ liệu. Vui lòng F5!", 5000);
+        }
+    }
 }
 
 // [MỚI] Hàm hiển thị trạng thái
@@ -263,6 +315,19 @@ audio.ontimeupdate = () => {
     // 1. Cập nhật giao diện Web
     document.getElementById('currTime').innerText = formatTime(audio.currentTime);
     seekBar.value = audio.currentTime;
+    // --- [MỚI] CẬP NHẬT THANH TIẾN TRÌNH TRONG DANH SÁCH (REALTIME) ---
+    if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
+        const songId = currentPlaylist[currentIndex].id;
+        const songItem = document.getElementById(`song-${songId}`);
+        
+        if (songItem) {
+            const percent = (audio.currentTime / audio.duration) * 100;
+            const bar = songItem.querySelector('.mini-progress-fill');
+            if (bar) {
+                bar.style.width = `${percent}%`;
+            }
+        }
+    }
 
     // 2. [FIX IOS] Cập nhật tiến độ cho màn hình khóa (BẮT BUỘC CHO IOS)
     if ('mediaSession' in navigator) {
@@ -304,6 +369,17 @@ audio.ontimeupdate = () => {
 
 // Khi hết bài -> Chuyển bài
 audio.onended = () => { 
+    // [MỚI] Gửi tín hiệu cộng điểm (+10 Hot Score)
+    // Chỉ cộng khi nghe trọn vẹn (không phải tua đến cuối rồi next)
+    // Logic đơn giản: cứ onended tự nhiên là cộng.
+    if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
+        fetch('/api/trend/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ songId: currentPlaylist[currentIndex].id })
+        }).catch(()=>{}); // Fire and forget (không cần chờ kết quả)
+    }
+
     if (loopMode === 2) { 
         audio.currentTime = 0; 
         audio.play().catch(()=>{}); 
@@ -402,15 +478,29 @@ function toggleShuffle() {
     isShuffle = !isShuffle; 
     const b = document.getElementById('btnShuffle'); 
     if (isShuffle) b.classList.add('active'); else b.classList.remove('active'); 
-    prepareNextSong(); // Tính lại bài tiếp theo khi đổi chế độ
+    prepareNextSong(); 
+    
+    savePlaybackSettings(); // [MỚI] Lưu ngay khi bấm
 }
 
 function toggleLoop() { 
     loopMode++; if (loopMode > 2) loopMode = 0; 
     const b = document.getElementById('btnLoop'); 
-    if (loopMode === 0) { b.classList.remove('active'); b.innerHTML = '🔁'; } 
-    else if (loopMode === 1) { b.classList.add('active'); b.innerHTML = '🔁'; } 
-    else { b.classList.add('active'); b.innerHTML = '🔂'; } 
+    
+    // Reset class trước
+    b.classList.remove('active');
+    
+    if (loopMode === 0) { 
+        b.innerHTML = '🔁'; 
+    } else if (loopMode === 1) { 
+        b.classList.add('active'); 
+        b.innerHTML = '🔁'; 
+    } else { 
+        b.classList.add('active'); 
+        b.innerHTML = '🔂'; 
+    }
+    
+    savePlaybackSettings(); // [MỚI] Lưu ngay khi bấm
 }
 
 function seekAudio() { 
@@ -514,7 +604,7 @@ function searchSongs() {
     renderPlaylist();
 }
 
-function filterPlaylist() {
+async function filterPlaylist() { // [Lưu ý] Thêm async vì ta sẽ gọi API
     const rawF = document.getElementById('folderFilter').value;
     const f = rawF ? rawF.trim() : 'all';
 
@@ -522,16 +612,34 @@ function filterPlaylist() {
 
     if (f === 'all') {
         currentPlaylist = [...allSongs];
+        finishFilter();
     } else if (f === 'favorites') {
         currentPlaylist = allSongs.filter(s => s.is_favorite === 1);
+        finishFilter();
+    } else if (f === 'top100') {
+        // [MỚI] Xử lý Top 100 -> Gọi API lấy dữ liệu mới nhất từ Server
+        try {
+            const res = await fetch('/api/songs/top100');
+            const topSongs = await res.json();
+            currentPlaylist = topSongs;
+            finishFilter();
+        } catch (e) {
+            console.error(e);
+            currentPlaylist = []; // Lỗi thì rỗng
+            finishFilter();
+        }
     } else {
-        // [SỬA LỖI] So sánh mềm dẻo hơn (chính xác từng ký tự sau khi trim)
+        // Lọc theo folder
         currentPlaylist = allSongs.filter(s => {
             const songFolder = (s.folder_path || '').trim();
             return songFolder === f;
         });
+        finishFilter();
     }
-    
+}
+
+// Hàm phụ trợ để tái sử dụng code render (đỡ lặp lại)
+function finishFilter() {
     if(isShuffle) toggleShuffle(); 
     else {
         renderPlaylist();
@@ -539,12 +647,62 @@ function filterPlaylist() {
     }
 }
 
+// [CẬP NHẬT] Hàm render danh sách bài hát mới
 function renderPlaylist() {
-    const list = document.getElementById('playlist'); list.innerHTML = '';
-    currentPlaylist.slice(0, 100).forEach((song, index) => {
-        const div = document.createElement('div'); div.className = 'song-item'; div.id = `song-${song.id}`;
-        div.innerHTML = `<div class="song-info"><span class="song-title">${song.name}</span><div class="song-meta"><span class="tag">${song.folder_path.replace('/', '')}</span><span>⏱ ${formatTime(song.duration)}</span></div></div><button class="btn-heart ${song.is_favorite?'liked':''}" onclick="toggleFavorite(event, '${song.id}')">${song.is_favorite?'❤️':'🤍'}</button>`;
+    const list = document.getElementById('playlist'); 
+    list.innerHTML = '';
+    
+    currentPlaylist.forEach((song, index) => {
+        const div = document.createElement('div'); 
+        div.className = 'song-item'; 
+        div.id = `song-${song.id}`;
+
+        // 1. Xử lý tên: Bỏ đuôi mở rộng (.mp3, .flac...)
+        const cleanName = song.name.replace(/\.(mp3|flac|wav|m4a|aac|ogg)$/i, '');
+        
+        // 2. Xử lý tên thư mục: Bỏ dấu gạch chéo
+        const cleanFolder = (song.folder_path || 'Root').replace('/', '');
+
+        // 3. Tính phần trăm tiến trình (Dựa trên lịch sử nghe)
+        // Lưu ý: song.current_time lấy từ DB, song.duration lấy từ metadata
+        let progressPercent = 0;
+        if (song.current_time && song.duration > 0) {
+            progressPercent = (song.current_time / song.duration) * 100;
+            // Giới hạn max 100%
+            if (progressPercent > 100) progressPercent = 100;
+        }
+
+        // 4. Xác định icon Cache (Tạm thời logic frontend)
+        // Vì Frontend không check được file hệ thống, ta tạm dùng logic:
+        // Nếu đã từng nghe (có duration & progress) -> Khả năng cao là đã cache hoặc load nhanh
+        // *Lưu ý: Để chính xác 100% cần Backend trả về field is_cached (xem Bước 3 bên dưới)*
+        const isCached = (song.is_cached === true); // Cần backend hỗ trợ, nếu không mặc định ẩn hoặc hiện 🚫
+        const cacheIcon = isCached ? '💾' : '🚫'; 
+
+        div.innerHTML = `
+            <div class="song-info">
+                <div class="song-title-row">
+                    <span class="folder-badge">[${cleanFolder}]</span>
+                    ${cleanName}
+                </div>
+                
+                <div class="song-meta-row">
+                    <span class="meta-icon" title="${isCached ? 'Đã lưu cache' : 'Chưa cache'}">${cacheIcon}</span>
+                    <span>${formatTime(song.duration)}</span>
+                    
+                    <div class="mini-progress-track">
+                        <div class="mini-progress-fill" style="width: ${progressPercent}%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn-heart ${song.is_favorite?'liked':''}" onclick="toggleFavorite(event, '${song.id}')">
+                ${song.is_favorite?'❤️':'🤍'}
+            </button>
+        `;
+
         div.onclick = () => { if(isShuffle) toggleShuffle(); playIndex(index); };
+        
         list.appendChild(div);
     });
 }
@@ -566,7 +724,7 @@ function toggleDownloaderView() {
         btn.classList.remove('active');
         
         // Tải lại playlist để cập nhật nếu vừa có nhạc mới
-        // init(); (Tùy chọn: nếu muốn auto refresh)
+        init(); // (Tùy chọn: nếu muốn auto refresh)
     } else {
         // ĐANG ẨN -> HIỆN LÊN (Vào Downloader)
         downloaderView.style.display = 'block';
@@ -689,10 +847,12 @@ function savePlaybackSettings() {
         playFromStart: document.getElementById('cbPlayFromStart').checked,
         skipMode: document.getElementById('cbSkipMode').checked,
         skipStart: document.getElementById('inpSkipStart').value,
-        skipEnd: document.getElementById('inpSkipEnd').value
+        skipEnd: document.getElementById('inpSkipEnd').value,
+        // [MỚI] Gửi thêm biến toàn cục
+        isShuffle: isShuffle, 
+        loopMode: loopMode
     };
     
-    // Gọi API lưu (Không cần await vì chạy ngầm cũng được)
     fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -707,17 +867,37 @@ async function loadPlaybackSettings() {
         const settings = await res.json();
         
         if (settings) {
+            // 1. Load setting skip/intro cũ
             const cbStart = document.getElementById('cbPlayFromStart');
             const cbSkip = document.getElementById('cbSkipMode');
             
-            // Database trả về 1/0, cần chuyển thành boolean
             cbStart.checked = settings.play_from_start === 1;
             cbSkip.checked = settings.skip_mode === 1;
-            
             document.getElementById('inpSkipStart').value = settings.skip_start;
             document.getElementById('inpSkipEnd').value = settings.skip_end;
 
-            // Kiểm tra xung đột logic (như cũ)
+            // 2. [MỚI] Load setting Shuffle
+            isShuffle = (settings.shuffle_mode === 1);
+            const btnShuf = document.getElementById('btnShuffle');
+            if (isShuffle) btnShuf.classList.add('active'); 
+            else btnShuf.classList.remove('active');
+
+            // 3. [MỚI] Load setting Loop
+            loopMode = settings.repeat_mode || 0;
+            const btnLoop = document.getElementById('btnLoop');
+            btnLoop.classList.remove('active');
+            
+            if (loopMode === 1) {
+                btnLoop.classList.add('active');
+                btnLoop.innerHTML = '🔁';
+            } else if (loopMode === 2) {
+                btnLoop.classList.add('active');
+                btnLoop.innerHTML = '🔂';
+            } else {
+                btnLoop.innerHTML = '🔁';
+            }
+
+            // Xử lý xung đột logic (nếu có)
             if (cbStart.checked && cbSkip.checked) {
                 cbStart.checked = false;
                 savePlaybackSettings();
@@ -726,11 +906,55 @@ async function loadPlaybackSettings() {
     } catch (e) { console.error("Không thể tải cài đặt:", e); }
 }
 
-// Gọi hàm này ngay khi khởi tạo
-loadPlaybackSettings();
+// --- [MỚI] ĐỒNG BỘ TRẠNG THÁI CACHE (REALTIME) ---
+function startCacheSync() {
+    // Cứ 10 giây kiểm tra 1 lần
+    setInterval(async () => {
+        try {
+            // Gọi API siêu nhẹ để lấy danh sách ID đã cache
+            const res = await fetch('/api/cache-list');
+            const cachedIds = await res.json();
+            const cachedSet = new Set(cachedIds); // Chuyển sang Set để tra cứu cho nhanh
+
+            // Duyệt qua các bài hát đang hiển thị trên màn hình
+            const uiItems = document.querySelectorAll('.song-item');
+            
+            uiItems.forEach(item => {
+                // Lấy ID bài hát từ id của thẻ div (song-xxxxx)
+                const songId = item.id.replace('song-', '');
+                
+                // Tìm icon cache trong thẻ này
+                const iconEl = item.querySelector('.meta-icon');
+                
+                if (iconEl) {
+                    if (cachedSet.has(songId)) {
+                        // Nếu đã cache -> Đổi thành đĩa mềm 💾
+                        if (iconEl.innerText !== '💾') {
+                            iconEl.innerText = '💾';
+                            iconEl.title = 'Đã lưu cache';
+                        }
+                    } else {
+                        // Nếu chưa cache -> Đổi thành cấm 🚫
+                        if (iconEl.innerText !== '🚫') {
+                            iconEl.innerText = '🚫';
+                            iconEl.title = 'Chưa cache';
+                        }
+                    }
+                }
+            });
+        } catch (e) {
+            // Lỗi thì bỏ qua, đợi lần sau sync tiếp
+        }
+    }, 10000); // 10000ms = 10 giây
+}
+
+
 
 // --- RUN ---
 // init();
+// loadPlaybackSettings();
+// startCacheSync();
+
 document.addEventListener('keydown', e => {
     // 1. Kiểm tra xem người dùng có đang gõ chữ không
     const activeTag = document.activeElement.tagName.toUpperCase();

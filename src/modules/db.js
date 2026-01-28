@@ -50,6 +50,23 @@ db.exec(`
   )
 `);
 
+// [CẬP NHẬT] Thêm cột lưu trạng thái Shuffle/Repeat
+// Dùng try-catch để tránh lỗi nếu cột đã tồn tại (khi chạy lại server nhiều lần)
+try {
+    db.exec("ALTER TABLE user_settings ADD COLUMN shuffle_mode INTEGER DEFAULT 0");
+    db.exec("ALTER TABLE user_settings ADD COLUMN repeat_mode INTEGER DEFAULT 0");
+} catch (error) {
+    // Bỏ qua lỗi "duplicate column name" nếu đã chạy rồi
+}
+
+// [MỚI] Thêm cột Điểm Nhiệt (Trending Score)
+try {
+    // Kiểu REAL (số thực) để lưu điểm thập phân khi bị trừ %
+    db.exec("ALTER TABLE songs ADD COLUMN trending_score REAL DEFAULT 0");
+} catch (error) {
+    // Bỏ qua lỗi nếu cột đã tồn tại
+}
+
 // Tạo sẵn dữ liệu mặc định nếu chưa có
 db.exec(`INSERT OR IGNORE INTO user_settings (id) VALUES (1)`);
 
