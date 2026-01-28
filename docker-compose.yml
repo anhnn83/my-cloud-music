@@ -20,7 +20,7 @@ services:
       resources:
         limits:
           cpus: '1.5'
-          memory: 512M
+          memory: 1G
 
   # --- CLOUDFLARE TUNNEL ---
   tunnel:
