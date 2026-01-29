@@ -250,7 +250,7 @@ async function processDownload(url, indices = [], formatId = null) {
         }
 
         const info = await getPreviewInfo(url);
-        let items = info.items || [];
+        let items = info.entries || [];
 
         // --- LỌC BÀI HÁT (INDICES) ---
         // Frontend gửi Indices bắt đầu từ 1 (User view: 1, 2, 3...)
