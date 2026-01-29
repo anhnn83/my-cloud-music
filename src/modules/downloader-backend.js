@@ -67,8 +67,8 @@ async function getPreviewInfo(url) {
         const ytArgs = {
             dumpSingleJson: true,
             noWarnings: true,
-            flatPlaylist: isPlaylistUrl, // Nếu là playlist, chỉ lấy list, không lấy chi tiết từng bài
-            extractorArgs: 'youtube:player_client=web', // Giả lập Web Client
+            flatPlaylist: isPlaylistUrl,
+            extractorArgs: 'youtube:player_client=web',
             jsRuntimes: 'node',
             impersonate: 'chrome-110', 
             noCheckCertificates: true,
@@ -77,28 +77,22 @@ async function getPreviewInfo(url) {
 
         const rawOutput = await yt(url, ytArgs, { ytDlpBinaryPath: YTDLP_PATH });
 
-        const isPlaylist = rawOutput._type === 'playlist';
-        const rawEntries = isPlaylist ? rawOutput.entries : [rawOutput];
+        // [FIXED] Logic nhận diện Playlist mạnh mẽ hơn
+        const hasEntries = Array.isArray(rawOutput.entries) && rawOutput.entries.length > 0;
+        const isPlaylist = rawOutput._type === 'playlist' || hasEntries;
         
-        // Map lại tên field cho khớp với Frontend (Frontend dùng 'items', 'title'...)
-        const items = rawEntries.map(entry => ({
-            id: entry.id,
-            title: entry.title,
-            duration: entry.duration
-        }));
-
-        // Trích xuất Formats (Chỉ dành cho Video lẻ)
+        const entries = isPlaylist ? rawOutput.entries : [rawOutput];
+        
         let cleanFormats = [];
+        // Chỉ lấy formats nếu đây KHÔNG phải là playlist (vì playlist không trả về formats chi tiết cho từng bài ở bước này)
         if (!isPlaylist && rawOutput.formats) {
             cleanFormats = rawOutput.formats.filter(f => {
-                // Lọc lấy các stream Video có hình ảnh (vcodec != none) và không phải storyboard
-                return f.vcodec !== 'none' && 
-                       !f.format_id.includes('sb') && 
-                       f.ext !== 'mhtml' &&
-                       f.protocol !== 'mhtml'; // Loại bỏ mhtml
+                if (f.format_id.includes('sb')) return false;
+                if (f.ext === 'mhtml' || f.protocol === 'mhtml') return false;
+                return f.vcodec !== 'none';
             }).map(f => {
                 return {
-                    id: f.format_id, // Frontend dùng id này để gửi lại khi download
+                    format_id: f.format_id,
                     ext: f.ext,
                     resolution: f.resolution || `${f.width}x${f.height}`,
                     filesize: formatSize(f.filesize || f.filesize_approx),
@@ -106,27 +100,23 @@ async function getPreviewInfo(url) {
                     vcodec: f.vcodec
                 };
             });
-            // Sắp xếp file nặng nhất (chất lượng cao nhất) lên đầu
-            cleanFormats.sort((a, b) => {
-                const sizeA = parseFloat(a.filesize) || 0;
-                const sizeB = parseFloat(b.filesize) || 0;
-                return sizeB - sizeA;
-            });
+            cleanFormats.sort((a, b) => (parseFloat(b.filesize) || 0) - (parseFloat(a.filesize) || 0));
         }
 
         return {
             title: rawOutput.title || 'Không có tiêu đề', 
-            count: items.length,
+            count: entries.length,
             thumbnail: rawOutput.thumbnail || (rawOutput.thumbnails ? rawOutput.thumbnails[0]?.url : null),
             uploader: rawOutput.uploader || 'Unknown', 
+            // Trả về type chính xác để Frontend hiển thị đúng nút
             type: isPlaylist ? 'Playlist' : 'Video Lẻ', 
             url, 
-            items: items, // Frontend dùng field này
-            formats: cleanFormats // Frontend dùng field này
+            entries, 
+            formats: cleanFormats 
         };
     } catch (err) { 
         console.error(err);
-        throw new Error('Không thể lấy thông tin. Link sai hoặc bị chặn.'); 
+        throw new Error('Lỗi lấy thông tin. YouTube chặn hoặc Link sai.'); 
     }
 }
 
