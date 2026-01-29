@@ -1014,9 +1014,17 @@ function applySpeedUI() {
         // Luôn hiển thị 2 số thập phân (1.00, 1.05)
         display.innerText = currentSpeed.toFixed(2);
         
-        // Đổi màu xanh nếu khác mặc định để dễ nhận biết
-        if (currentSpeed !== 1.00) display.style.color = '#1db954';
-        else display.style.color = 'inherit';
+        // --- LOGIC MÀU SẮC MỚI ---
+        if (currentSpeed < 1.0) {
+            // Tốc độ chậm (< 1) -> Màu Đỏ cam (#ff4d4d)
+            display.style.color = '#ff4d4d'; 
+        } else if (currentSpeed > 1.0) {
+            // Tốc độ nhanh (> 1) -> Màu Xanh lá (#1db954)
+            display.style.color = '#1db954'; 
+        } else {
+            // Tốc độ chuẩn (1.0) -> Màu mặc định (trắng/xám)
+            display.style.color = 'inherit'; 
+        }
     }
 
     // 2. Áp dụng vào thẻ Audio

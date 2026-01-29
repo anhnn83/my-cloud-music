@@ -97,14 +97,23 @@
 
     <div class="player-bar">
         <div id="statusBar" class="status-bar">Sẵn sàng</div>
-        <div class="playback-settings" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
+        <div class="playback-settings" style="
+            display: flex; 
+            flex-wrap: nowrap; /* Ép không xuống dòng */
+            gap: 10px; 
+            align-items: center; 
+            overflow-x: auto; /* Cho phép cuốt ngang nếu màn hình quá bé */
+            white-space: nowrap; /* Giữ chữ không bị ngắt dòng */
+            padding-bottom: 5px; /* Tạo khoảng trống để vuốt dễ hơn */
+            -webkit-overflow-scrolling: touch; /* Vuốt mượt trên iOS */
+        ">
             
-            <label class="setting-item" title="Luôn phát lại từ 0:00, bỏ qua lịch sử" style="margin:0;">
+            <label class="setting-item" title="Luôn phát lại từ 0:00" style="margin:0; flex-shrink: 0;">
                 <input type="checkbox" id="cbPlayFromStart" onclick="toggleSettingMode('start')"> 
                 <span>Phát từ đầu</span>
             </label>
             
-            <label class="setting-item" title="Tự động bỏ qua đoạn đầu và cuối" style="margin:0;">
+            <label class="setting-item" title="Tự động bỏ qua đoạn đầu và cuối" style="margin:0; flex-shrink: 0;">
                 <input type="checkbox" id="cbSkipMode" onclick="toggleSettingMode('skip')"> 
                 <span>Bỏ qua: 
                     <input type="number" id="inpSkipStart" value="5" min="0" style="width:30px; text-align:center; padding:2px;" 
@@ -115,7 +124,7 @@
                 </span>
             </label>
 
-            <div class="setting-item" style="display: flex; align-items: center; gap: 5px; margin:0;">
+            <div class="setting-item" style="display: flex; align-items: center; gap: 5px; margin:0; flex-shrink: 0;">
                 <span>Tốc độ:</span>
                 <button onclick="changeSpeed(-0.01)" style="
                     width: 24px; height: 24px; cursor: pointer; border-radius: 4px; border: 1px solid #555; 
@@ -135,7 +144,7 @@
                 </button>
             </div>
 
-        </div>    
+        </div>
         <div class="player-header">
             <div class="now-playing" id="songTitle">Chưa chọn bài hát</div>
             <button id="playerHeart" class="btn-heart btn-heart-player" onclick="toggleFavoriteCurrent()">🤍</button>
