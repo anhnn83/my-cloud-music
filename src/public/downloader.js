@@ -374,8 +374,8 @@ function startPolling() {
                 setDisplay(btnStop, 'none');
 
                 if (typeof window.init === 'function' && typeof window.updateLibrary !== 'undefined') {
-                    console.log("🔄 Auto-refreshing library...");
-                    window.init(); 
+                    console.log("🔄 Auto-refreshing library (Silent Mode)...");
+                    window.init(true); 
                 }
                 
                 if(!document.getElementById('btnReset')) {

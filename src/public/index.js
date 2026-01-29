@@ -15,10 +15,11 @@ let isPreloaded = false;
 // --- src/public/index.js ---
 window.init = init;
 
-async function init() {
+// --- src/public/index.js ---
+
+async function init(isSilent = false) {
     try {
         // 1. Lấy danh sách bài hát từ Server
-        // API này đã được cập nhật để trả về cả thông tin cache (nếu có)
         const res = await fetch('/api/songs');
         const data = await res.json();
         
@@ -27,60 +28,79 @@ async function init() {
         document.getElementById('count').innerText = data.total;
 
         // 2. Tạo Menu lọc (Dropdown)
-        // Logic: Lấy danh sách folder duy nhất -> Trim khoảng trắng -> Sắp xếp
+        // Lưu lại giá trị filter hiện tại để không bị reset khi render lại option
+        const currentFilterVal = document.getElementById('folderFilter').value;
         const folders = [...new Set(allSongs.map(s => (s.folder_path || 'Root').trim()))];
         
         const select = document.getElementById('folderFilter');
-        select.innerHTML = ''; // Xóa sạch option cũ để tạo lại từ đầu
+        select.innerHTML = ''; 
 
-        // Option A: Tất cả
-        const optAll = document.createElement('option');
-        optAll.value = 'all'; 
-        optAll.innerText = '📁 Tất cả thư mục';
-        select.appendChild(optAll);
+        // Tạo lại các Option (Giữ nguyên logic cũ của bạn)
+        const optAll = document.createElement('option'); optAll.value = 'all'; optAll.innerText = '📁 Tất cả thư mục'; select.appendChild(optAll);
+        const optFav = document.createElement('option'); optFav.value = 'favorites'; optFav.innerText = '❤️ Bài hát yêu thích'; select.appendChild(optFav);
+        const optTop = document.createElement('option'); optTop.value = 'top100'; optTop.innerText = '🔥 Top 100 Thường nghe'; select.appendChild(optTop);
 
-        // Option B: Yêu thích
-        const optFav = document.createElement('option');
-        optFav.value = 'favorites'; 
-        optFav.innerText = '❤️ Bài hát yêu thích';
-        select.appendChild(optFav);
-
-        // Option C: [MỚI] Top 100 Trending
-        const optTop = document.createElement('option');
-        optTop.value = 'top100'; 
-        optTop.innerText = '🔥 Top 100 Thường nghe';
-        select.appendChild(optTop);
-
-        // Option D: Các thư mục thực tế từ Drive
         folders.sort().forEach(f => {
             const opt = document.createElement('option');
-            opt.value = f; 
-            // Thêm icon folder cho đẹp
-            opt.innerText = f.replace('/', '📁 '); 
-            select.appendChild(opt);
+            opt.value = f; opt.innerText = f.replace('/', '📁 '); select.appendChild(opt);
         });
 
-        // 3. Hiển thị mặc định
-        currentPlaylist = [...allSongs];
-        renderPlaylist(); // Hàm render mới (có thanh progress và icon cache)
+        // Khôi phục lại lựa chọn cũ của người dùng
+        if (currentFilterVal) select.value = currentFilterVal;
 
-        // 4. Khôi phục các cài đặt từ Server (Shuffle, Loop, Intro/Outro...)
-        if (typeof loadPlaybackSettings === 'function') {
-            await loadPlaybackSettings();
-        }
+        // --- XỬ LÝ PHÂN TÁCH LOGIC ---
 
-        // 5. Khôi phục phiên nghe trước đó (Bài đang nghe dở)
-        await checkLastSession();
-        
-        // 6. Kích hoạt đồng bộ trạng thái Cache Realtime
-        if (typeof startCacheSync === 'function') {
-             // Đảm bảo chỉ chạy 1 lần
-             if (!window.hasStartedCacheSync) {
+        if (!isSilent) {
+            // === TRƯỜNG HỢP 1: LOAD LẦN ĐẦU (F5) ===
+            currentPlaylist = [...allSongs];
+            renderPlaylist(); 
+
+            if (typeof loadPlaybackSettings === 'function') {
+                await loadPlaybackSettings();
+            }
+
+            // CHỈ GỌI checkLastSession KHI LOAD LẦN ĐẦU
+            await checkLastSession(); 
+            
+            // Kích hoạt đồng bộ cache (chỉ chạy 1 lần)
+            if (typeof startCacheSync === 'function' && !window.hasStartedCacheSync) {
                  startCacheSync();
                  window.hasStartedCacheSync = true;
-             }
-        }
+            }
 
+        } else {
+            // === TRƯỜNG HỢP 2: SILENT UPDATE (SAU KHI TẢI NHẠC) ===
+            // Mục tiêu: Cập nhật list nhạc MÀ KHÔNG DỪNG NHẠC đang phát
+
+            // 1. Lưu lại ID bài hát đang phát (nếu có)
+            let playingSongId = null;
+            if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
+                playingSongId = currentPlaylist[currentIndex].id;
+            }
+
+            // 2. Cập nhật currentPlaylist dựa theo bộ lọc hiện tại
+            // (Gọi lại logic lọc thay vì gán cứng, để cover cả trường hợp đang ở trong Folder hoặc Favorites)
+            await filterPlaylist(); 
+
+            // 3. Tìm lại vị trí (Index) mới của bài hát đang phát
+            // Vì khi thêm bài mới, số thứ tự (index) có thể bị lệch
+            if (playingSongId) {
+                const newIndex = currentPlaylist.findIndex(s => s.id === playingSongId);
+                if (newIndex !== -1) {
+                    currentIndex = newIndex;
+                    
+                    // Highlight lại bài hát đang phát trên giao diện mới
+                    // (Đợi render xong 1 chút rồi mới add class)
+                    setTimeout(() => {
+                        const el = document.getElementById(`song-${playingSongId}`);
+                        if(el) el.classList.add('active');
+                    }, 100);
+                }
+            }
+
+            showStatus("✅ Đã cập nhật thư viện nhạc mới!", 3000);
+        }
+        
     } catch (e) { 
         console.error("Lỗi khởi tạo:", e);
         if (typeof showStatus === 'function') {

@@ -10,8 +10,8 @@ const DOWNLOAD_FOLDER_ID = process.env.DRIVE_DOWNLOAD_FOLDER_ID || process.env.D
 // Ưu tiên biến môi trường, fallback về lệnh mặc định
 const YTDLP_PATH = process.env.YTDLP_PATH || 'yt-dlp'; 
 
-const CONCURRENCY_LIMIT = 1; // Tải từng file để tránh treo VPS yếu
-const DOWNLOAD_FRAGMENTS = 3; // Tăng tốc độ tải từng phần
+const CONCURRENCY_LIMIT = 2; // Tải từng file để tránh treo VPS yếu
+const DOWNLOAD_FRAGMENTS = 4; // Tăng tốc độ tải từng phần
 
 const TEMP_DIR = path.join(__dirname, '../../temp_downloads');
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -67,9 +67,9 @@ async function getPreviewInfo(url) {
         const ytArgs = {
             dumpSingleJson: true,
             noWarnings: true,
-            yesPlaylist: isPlaylistUrl,
-            flatPlaylist: isPlaylistUrl,
-            extractorArgs: 'youtube:player_client=web',
+            // yesPlaylist: isPlaylistUrl,
+            flatPlaylist: true,
+            extractorArgs: 'youtube:player_client=android',
             jsRuntimes: 'node',
             impersonate: 'chrome-110', 
             noCheckCertificates: true,
@@ -173,7 +173,7 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             embedThumbnail: true, addMetadata: true, 
             output: outputTemplate,
             noPlaylist: true,
-            extractorArgs: 'youtube:player_client=web', 
+            extractorArgs: 'youtube:player_client=android', 
             jsRuntimes: 'node',
             impersonate: 'chrome-110', 
             noCheckCertificates: true, forceIpv4: true,
@@ -233,27 +233,27 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
     }
 }
 
-async function processDownload(url, arg2 = null, arg3 = null) {
-    // Logic tự động nhận diện tham số:
-    // arg2 có thể là indices (mảng) hoặc formatId (chuỗi)
-    
-    let indices = [];
-    let formatId = null;
-
-    if (Array.isArray(arg2)) {
-        indices = arg2;         // Nếu tham số 2 là mảng -> nó là indices
-        formatId = arg3;        // Tham số 3 là formatId
-    } else if (typeof arg2 === 'string') {
-        formatId = arg2;        // Nếu tham số 2 là chuỗi -> nó là formatId (trường hợp tải video lẻ)
-        indices = [];
-    }
-
+async function processDownload(url, rawIndices = null, formatId = null) {
     if (state.isProcessing) return; 
     state.isProcessing = true; state.shouldStop = false; state.logs = []; 
-    addLog(`🚀 Bắt đầu...`);
+    
+    // --- 1. XỬ LÝ BIẾN INDICES (Chuỗi -> Mảng) ---
+    let indices = [];
+    if (Array.isArray(rawIndices)) {
+        indices = rawIndices;
+    } else if (typeof rawIndices === 'string' && rawIndices.trim().length > 0) {
+        // Tách chuỗi "1,2,3" thành mảng số [1, 2, 3]
+        indices = rawIndices.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+    }
+    // ---------------------------------------------
+
+    // Log kiểm tra để bạn yên tâm
+    if (formatId) addLog(`🚀 Bắt đầu tải VIDEO (Format ID: ${formatId})...`);
+    else if (indices.length > 0) addLog(`🚀 Bắt đầu tải ${indices.length} bài hát đã chọn (MP3)...`);
+    else addLog(`🚀 Bắt đầu tải TOÀN BỘ danh sách (MP3)...`);
 
     try {
-        // Dọn dẹp thư mục temp trước khi tải
+        // Dọn dẹp thư mục temp
         if (fs.existsSync(TEMP_DIR)) {
             const oldFiles = fs.readdirSync(TEMP_DIR);
             for (const file of oldFiles) {
@@ -266,21 +266,21 @@ async function processDownload(url, arg2 = null, arg3 = null) {
         const info = await getPreviewInfo(url);
         let items = info.entries || [];
 
-        if (Array.isArray(indices) && indices.length > 0) {
+        // --- 2. LỌC BÀI HÁT ---
+        if (indices.length > 0) {
             items = items.filter((_, idx) => {
+                // Frontend gửi index bắt đầu từ 1 (1, 2, 3...), mảng bắt đầu từ 0
                 return indices.includes(idx + 1);
             });
-            addLog(`🎯 Đã lọc: Tải ${items.length} bài theo yêu cầu.`);
+            addLog(`🎯 Đã lọc: Chỉ tải ${items.length} bài theo yêu cầu.`);
         }
 
-        // Nếu playlist rỗng (do lọc sai hoặc playlist trống)
         if (items.length === 0) {
             addLog(`⚠️ Không có bài nào để tải.`);
             return;
         }
 
         state.total = items.length; state.progress = 0;
-
         addLog(`☁️ Đang đồng bộ danh sách file từ Drive...`);
         const existingFileNamesLower = await getExistingFiles(DOWNLOAD_FOLDER_ID);
         

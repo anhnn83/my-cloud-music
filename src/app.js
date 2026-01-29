@@ -1,4 +1,4 @@
-// src/app.js - Version 6.0
+// src/app.js - Version 6.1
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -209,7 +209,7 @@ fastify.post('/api/download', async (request, reply) => {
     }
 
     // Truyền formatId vào hàm xử lý
-    processDownload(url, indices, formatId);
+    processDownload(url, indices || null, formatId || null);
 
     return { status: 'started', message: 'Đã bắt đầu tiến trình.' };
 });
