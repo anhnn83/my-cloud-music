@@ -427,6 +427,41 @@ fastify.get('/api/songs/top100', async (request, reply) => {
     }
 });
 
+// [MỚI] API Lấy Top 100 Mới tải (Sắp xếp theo created_at giảm dần)
+fastify.get('/api/songs/recent', async (request, reply) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT s.*, h.current_time 
+            FROM songs s 
+            LEFT JOIN playback_history h ON s.id = h.song_id 
+            ORDER BY s.created_at DESC 
+            LIMIT 100
+        `);
+        const recentSongs = stmt.all();
+        
+        // Vẫn check cache như logic cũ để hiển thị icon
+        const cacheDir = path.join(__dirname, '../cache');
+        let cachedSet = new Set();
+        try {
+            if (fs.existsSync(cacheDir)) {
+                const files = await fs.promises.readdir(cacheDir);
+                files.forEach(f => {
+                    if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
+                });
+            }
+        } catch (e) {}
+
+        recentSongs.forEach(song => {
+            song.is_cached = cachedSet.has(song.id);
+        });
+
+        return recentSongs;
+    } catch (e) {
+        console.error("Recent Songs Error:", e);
+        return [];
+    }
+});
+
 // 3. Cơ chế "Hạ nhiệt" (Decay) - Chạy mỗi 24 giờ
 // Giảm 10% điểm của tất cả bài hát để các bài cũ từ từ rớt hạng
 setInterval(() => {

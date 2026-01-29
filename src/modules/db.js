@@ -67,6 +67,14 @@ try {
     // Bỏ qua lỗi nếu cột đã tồn tại
 }
 
+// [MỚI] Thêm cột Thời gian tạo (Created At) để lọc bài mới tải
+try {
+    // DEFAULT CURRENT_TIMESTAMP sẽ tự động lấy giờ hiện tại khi insert bài mới
+    db.exec("ALTER TABLE songs ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+} catch (error) {
+    // Bỏ qua lỗi nếu cột đã tồn tại
+}
+
 // Tạo sẵn dữ liệu mặc định nếu chưa có
 db.exec(`INSERT OR IGNORE INTO user_settings (id) VALUES (1)`);
 

@@ -39,7 +39,8 @@ async function init(isSilent = false) {
         const optAll = document.createElement('option'); optAll.value = 'all'; optAll.innerText = '📁 Tất cả thư mục'; select.appendChild(optAll);
         const optFav = document.createElement('option'); optFav.value = 'favorites'; optFav.innerText = '❤️ Bài hát yêu thích'; select.appendChild(optFav);
         const optTop = document.createElement('option'); optTop.value = 'top100'; optTop.innerText = '🔥 Top 100 Thường nghe'; select.appendChild(optTop);
-
+        const optRecent = document.createElement('option'); optRecent.value = 'recent'; optRecent.innerText = '🆕 Top 100 Mới tải'; select.appendChild(optRecent);
+        
         folders.sort().forEach(f => {
             const opt = document.createElement('option');
             opt.value = f; opt.innerText = f.replace('/', '📁 '); select.appendChild(opt);
@@ -647,6 +648,17 @@ async function filterPlaylist() { // [Lưu ý] Thêm async vì ta sẽ gọi API
         } catch (e) {
             console.error(e);
             currentPlaylist = []; // Lỗi thì rỗng
+            finishFilter();
+        }
+    } else if (f === 'recent') {
+        try {
+            const res = await fetch('/api/songs/recent');
+            const recentSongs = await res.json();
+            currentPlaylist = recentSongs;
+            finishFilter();
+        } catch (e) {
+            console.error(e);
+            currentPlaylist = [];
             finishFilter();
         }
     } else {
