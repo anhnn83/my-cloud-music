@@ -1034,6 +1034,29 @@ function applySpeedUI() {
     }
 }
 
+// --- [MỚI] TÍNH NĂNG TUA NHANH/LÙI (SEEK) ---
+function seekRelative(seconds) {
+    const audio = document.getElementById('audio');
+    
+    // Chỉ thực hiện khi audio đã tải metadata (có duration)
+    if (audio && audio.duration) {
+        let newTime = audio.currentTime + seconds;
+        
+        // Giới hạn không cho tua quá độ dài bài hát hoặc nhỏ hơn 0
+        if (newTime < 0) newTime = 0;
+        if (newTime > audio.duration) newTime = audio.duration;
+        
+        audio.currentTime = newTime;
+        
+        // Cập nhật ngay giao diện thanh trượt để người dùng thấy phản hồi tức thì
+        const seekBar = document.getElementById('seekBar');
+        const currTimeLabel = document.getElementById('currTime');
+        
+        if (seekBar) seekBar.value = newTime;
+        if (currTimeLabel) currTimeLabel.innerText = formatTime(newTime);
+    }
+}
+
 // --- RUN ---
 // init();
 // loadPlaybackSettings();
@@ -1048,8 +1071,30 @@ document.addEventListener('keydown', e => {
     if (isInput) return;
 
     // 2. Nếu không gõ chữ mà nhấn Space -> Toggle Play/Pause
-    if (e.code === 'Space') {
-        e.preventDefault(); // Ngăn trình duyệt cuộn trang xuống
-        togglePlay();
+    switch (e.code) {
+        case 'Space':
+            e.preventDefault(); // Ngăn cuộn trang
+            togglePlay();
+            break;
+            
+        case 'ArrowLeft': // [MỚI] Mũi tên trái -> Lùi 10s
+            e.preventDefault();
+            seekRelative(-10);
+            break;
+            
+        case 'ArrowRight': // [MỚI] Mũi tên phải -> Tới 10s
+            e.preventDefault();
+            seekRelative(10);
+            break;
+            
+        case 'ArrowUp': // [MỚI] Mũi tên lên -> Tăng volume (Tùy chọn)
+            e.preventDefault();
+            if(audio.volume < 1) audio.volume = Math.min(1, audio.volume + 0.1);
+            break;
+
+        case 'ArrowDown': // [MỚI] Mũi tên xuống -> Giảm volume (Tùy chọn)
+            e.preventDefault();
+            if(audio.volume > 0) audio.volume = Math.max(0, audio.volume - 0.1);
+            break;
     }
 });

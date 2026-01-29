@@ -218,11 +218,13 @@
             <span id="totalTime">0:00</span>
         </div>
         <div class="audio-controls">
-            <button class="btn-control" onclick="toggleShuffle()" id="btnShuffle">🔀</button>
-            <button class="btn-control" onclick="playPrev()">⏮️</button>
-            <button class="btn-control btn-main" onclick="togglePlay()" id="btnPlay">▶️</button>
-            <button class="btn-control" onclick="playNext(true)">⏭️</button>
-            <button class="btn-control" onclick="toggleLoop()" id="btnLoop">🔁</button>
+            <button class="btn-control" onclick="toggleShuffle()" id="btnShuffle" title="Trộn bài">🔀</button>
+            <button class="btn-control" onclick="seekRelative(-10)" title="Lùi 10 giây" style="font-size: 0.9rem;">⏪ 10s</button>
+            <button class="btn-control" onclick="playPrev()" title="Bài trước">⏮️</button>
+            <button class="btn-control btn-main" onclick="togglePlay()" id="btnPlay" title="Phát/Dừng">▶️</button>
+            <button class="btn-control" onclick="playNext(true)" title="Bài sau">⏭️</button>
+            <button class="btn-control" onclick="seekRelative(10)" title="Tới 10 giây" style="font-size: 0.9rem;">10s ⏩</button>
+            <button class="btn-control" onclick="toggleLoop()" id="btnLoop" title="Lặp lại">🔁</button>
         </div>
         <audio id="audio" style="display:none;" preload="metadata"></audio>
     </div>
