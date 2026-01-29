@@ -159,13 +159,12 @@ fastify.get('/api/settings', async (request, reply) => {
 
 // [CẬP NHẬT] API Lưu cài đặt playback (Bao gồm cả Shuffle/Repeat)
 fastify.post('/api/settings', async (request, reply) => {
-    // Nhận thêm isShuffle và loopMode từ client
-    const { playFromStart, skipMode, skipStart, skipEnd, isShuffle, loopMode } = request.body;
+    const { playFromStart, skipMode, skipStart, skipEnd, isShuffle, loopMode, playbackRate } = request.body;
     
     const stmt = db.prepare(`
         UPDATE user_settings 
         SET play_from_start = ?, skip_mode = ?, skip_start = ?, skip_end = ?,
-            shuffle_mode = ?, repeat_mode = ?
+            shuffle_mode = ?, repeat_mode = ?, playback_rate = ?
         WHERE id = 1
     `);
     
