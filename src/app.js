@@ -1,4 +1,4 @@
-// src/app.js - Version 6.2 (Top 100 Mới)
+// src/app.js - Version 6.3 (PlaybackRate)
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -174,8 +174,9 @@ fastify.post('/api/settings', async (request, reply) => {
         skipMode ? 1 : 0, 
         parseInt(skipStart) || 0, 
         parseInt(skipEnd) || 0,
-        isShuffle ? 1 : 0,    // [MỚI]
-        parseInt(loopMode) || 0 // [MỚI]
+        isShuffle ? 1 : 0,
+        parseInt(loopMode) || 0,
+        parseFloat(playbackRate) || 1.0
     );
     
     return { status: 'saved' };

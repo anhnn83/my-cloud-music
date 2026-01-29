@@ -1,5 +1,5 @@
-// src/public/index.js - Version 3.1 (Top 100 mới)
-console.log("--- src/public/index.js - Version 3.1 ---");
+// src/public/index.js - Version 3.2 (PlaybackRate)
+console.log("--- src/public/index.js - Version 3.2 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -307,6 +307,8 @@ function loadSong(song, autoPlay = true) {
 
     // D. Gán nguồn (Thêm timestamp để tránh cache trình duyệt)
     audio.src = `/stream/${song.id}?t=${Date.now()}`;
+    // [MỚI] Áp dụng lại tốc độ phát cho bài mới
+    audio.playbackRate = currentSpeed;
     
     // E. Bắt buộc nạp lại
     audio.load();
@@ -881,9 +883,9 @@ function savePlaybackSettings() {
         skipMode: document.getElementById('cbSkipMode').checked,
         skipStart: document.getElementById('inpSkipStart').value,
         skipEnd: document.getElementById('inpSkipEnd').value,
-        // [MỚI] Gửi thêm biến toàn cục
         isShuffle: isShuffle, 
-        loopMode: loopMode
+        loopMode: loopMode,
+        playbackRate: currentSpeed
     };
     
     fetch('/api/settings', {
@@ -935,6 +937,9 @@ async function loadPlaybackSettings() {
                 cbStart.checked = false;
                 savePlaybackSettings();
             }
+            // [MỚI] Load Speed
+            currentSpeed = settings.playback_rate || 1.00;
+            applySpeedUI(); // Áp dụng ngay
         }
     } catch (e) { console.error("Không thể tải cài đặt:", e); }
 }
@@ -981,7 +986,45 @@ function startCacheSync() {
     }, 10000); // 10000ms = 10 giây
 }
 
+// --- [MỚI] LOGIC TỐC ĐỘ PHÁT (- 1.00 +) ---
+let currentSpeed = 1.00;
 
+function changeSpeed(delta) {
+    // Cộng trừ và làm tròn số thập phân (tránh lỗi 1.0099999)
+    currentSpeed = parseFloat((currentSpeed + delta).toFixed(2));
+    
+    // Giới hạn tốc độ (ví dụ: từ 0.25x đến 4.00x)
+    if (currentSpeed < 0.25) currentSpeed = 0.25;
+    if (currentSpeed > 4.00) currentSpeed = 4.00;
+    
+    applySpeedUI();
+    savePlaybackSettings(); // Lưu ngay
+}
+
+function resetSpeed() {
+    currentSpeed = 1.00;
+    applySpeedUI();
+    savePlaybackSettings();
+}
+
+function applySpeedUI() {
+    // 1. Cập nhật text hiển thị
+    const display = document.getElementById('speedDisplay');
+    if (display) {
+        // Luôn hiển thị 2 số thập phân (1.00, 1.05)
+        display.innerText = currentSpeed.toFixed(2);
+        
+        // Đổi màu xanh nếu khác mặc định để dễ nhận biết
+        if (currentSpeed !== 1.00) display.style.color = '#1db954';
+        else display.style.color = 'inherit';
+    }
+
+    // 2. Áp dụng vào thẻ Audio
+    const audio = document.getElementById('audio');
+    if (audio) {
+        audio.playbackRate = currentSpeed;
+    }
+}
 
 // --- RUN ---
 // init();

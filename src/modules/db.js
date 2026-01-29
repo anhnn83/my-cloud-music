@@ -1,4 +1,4 @@
-// src/modules/db.js - Version 2.0 (Migration Fix)
+// src/modules/db.js - Version 2.1 (PlaybackRate)
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -93,6 +93,9 @@ addColumnIfNotExists('songs', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'
 try {
     db.exec("UPDATE songs SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
 } catch(e) {}
+
+// [MỚI] Thêm cột Tốc độ phát (Playback Rate) - Mặc định là 1.0 (100%)
+addColumnIfNotExists('user_settings', 'playback_rate', 'REAL DEFAULT 1.0');
 
 console.log('✅ Database đã sẵn sàng (SQLite): music.db');
 
