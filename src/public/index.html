@@ -97,75 +97,97 @@
 
     <div class="player-bar">
         <div id="statusBar" class="status-bar">Sẵn sàng</div>
+        
         <div class="playback-settings" id="smartSettings">
             <style>
-                /* CSS thông minh nằm gọn ở đây để dễ quản lý */
                 #smartSettings {
+                    /* 1. ĐỊNH VỊ KHUNG HÌNH (Fix lỗi tràn màn hình) */
                     display: flex;
-                    width: 100%;             /* Luôn chiếm 100% chiều rộng khung chứa */
-                    justify-content: space-between; /* Tự động chia đều khoảng cách */
                     align-items: center;
-                    flex-wrap: nowrap;       /* Cấm xuống dòng */
-                    gap: 2px;                /* Khoảng cách tối thiểu */
-                    box-sizing: border-box;  /* Tính toán kích thước chuẩn */
-                    padding: 0 5px;          /* Đệm nhẹ 2 đầu */
+                    justify-content: space-between; /* Đẩy các phần tử dàn đều trong khung */
+                    
+                    width: 95%;              /* Trên điện thoại: Chiếm 95% màn hình (chừa lề 2 bên) */
+                    max-width: 600px;        /* Trên máy tính: Không bao giờ rộng quá 600px (bằng thanh player) */
+                    margin: 0 auto 10px auto;/* Căn giữa màn hình & tạo khoảng cách đáy 10px */
+                    
+                    /* 2. XỬ LÝ TRÊN MÀN HÌNH SIÊU NHỎ */
+                    overflow-x: auto;        /* Cho phép vuốt ngang nếu quá chật */
+                    white-space: nowrap;     /* Cấm xuống dòng */
+                    
+                    /* 3. THẨM MỸ */
+                    box-sizing: border-box;
+                    background: rgba(255, 255, 255, 0.05); /* Nền mờ nhẹ để phân vùng */
+                    border-radius: 8px;      /* Bo góc */
+                    padding: 5px 10px;       /* Đệm bên trong */
                 }
 
-                /* Tự động chỉnh cỡ chữ theo độ rộng màn hình 
-                - Nhỏ nhất: 11px (trên điện thoại bé)
-                - Trung bình: 3vw (tự phóng to khi màn hình to hơn)
-                - Lớn nhất: 14px (trên máy tính)
-                */
+                /* Ẩn thanh cuộn xấu xí nhưng vẫn cho vuốt */
+                #smartSettings::-webkit-scrollbar { display: none; }
+                #smartSettings { -ms-overflow-style: none; scrollbar-width: none; }
+
+                /* Font chữ co giãn thông minh */
                 #smartSettings .setting-group {
                     display: flex; 
                     align-items: center; 
-                    gap: 3px;
-                    font-size: clamp(10px, 3.2vw, 14px); /* LOGIC THÔNG MINH LÀ ĐÂY */
-                    white-space: nowrap;
-                    flex-shrink: 1; /* Cho phép co lại nếu quá chật */
+                    gap: 5px;
+                    font-size: 13px; /* Cố định size vừa phải, dễ đọc */
+                    flex-shrink: 0;  /* Không cho phép các cụm bị bóp méo */
                 }
                 
-                /* Input số giây và nút bấm cũng co giãn theo */
+                /* Checkbox & Input */
+                #smartSettings input[type="checkbox"] {
+                    margin: 0 4px 0 0;
+                    cursor: pointer;
+                    width: 14px; height: 14px;
+                    accent-color: #1db954; /* Màu xanh Spotify cho checkbox */
+                }
+
                 #smartSettings input[type="number"] {
-                    width: clamp(20px, 6vw, 30px); /* Tự động thu nhỏ ô nhập liệu */
-                    font-size: inherit;
+                    width: 28px;
                     text-align: center;
-                    padding: 1px;
-                    border: 1px solid #444;
+                    border: 1px solid #555;
                     background: #222;
                     color: #fff;
-                    border-radius: 3px;
+                    border-radius: 4px;
+                    padding: 2px 0;
+                    font-size: 12px;
                 }
 
-                #smartSettings input[type="checkbox"] {
-                    margin: 0 3px 0 0;
-                    width: 12px; height: 12px; /* Checkbox nhỏ lại chút trên mobile */
+                /* Cụm Tốc độ */
+                .speed-control-group {
+                    display: flex; 
+                    align-items: center; 
+                    gap: 3px;
+                    background: #222; /* Nền tối hơn cho cụm tốc độ */
+                    padding: 2px 6px;
+                    border-radius: 15px;
+                    border: 1px solid #444;
                 }
 
-                /* Nút tăng giảm tốc độ */
-                #smartSettings .btn-speed {
-                    width: clamp(18px, 5vw, 24px); 
-                    height: clamp(18px, 5vw, 24px);
-                    padding: 0;
-                    font-size: inherit;
+                .btn-speed {
+                    width: 20px; height: 20px;
                     display: flex; align-items: center; justify-content: center;
-                    cursor: pointer; border-radius: 4px; border: 1px solid #555;
-                    background: #333; color: white;
+                    background: none; border: none; color: #fff;
+                    cursor: pointer; font-size: 16px; font-weight: bold;
                 }
+                .btn-speed:hover { color: #1db954; }
 
-                /* Ẩn bớt chữ "Tốc độ:" trên màn hình siêu nhỏ (< 360px) để dành chỗ */
-                @media (max-width: 360px) {
-                    .hide-on-tiny { display: none; }
+                /* Media Query: Trên điện thoại rất nhỏ -> Ẩn bớt chữ thừa */
+                @media (max-width: 380px) {
+                    .hide-on-mobile { display: none; }
+                    #smartSettings { width: 100%; border-radius: 0; background: transparent; }
                 }
             </style>
             
             <label class="setting-group" title="Luôn phát lại từ 0:00">
                 <input type="checkbox" id="cbPlayFromStart" onclick="toggleSettingMode('start')"> 
-                <span>Từ đầu</span> </label>
+                <span>Từ đầu</span>
+            </label>
             
             <label class="setting-group" title="Tự động bỏ qua đoạn đầu/cuối">
                 <input type="checkbox" id="cbSkipMode" onclick="toggleSettingMode('skip')"> 
-                <span>Skip: <input type="number" id="inpSkipStart" value="5" min="0" 
+                <span>Skip: 
+                    <input type="number" id="inpSkipStart" value="5" min="0" 
                         onclick="event.stopPropagation()" onchange="savePlaybackSettings()">s
                     & 
                     <input type="number" id="inpSkipEnd" value="10" min="0"
@@ -173,18 +195,19 @@
                 </span>
             </label>
 
-            <div class="setting-group">
-                <span class="hide-on-tiny">Tốc độ:</span>
+            <div class="setting-group speed-control-group">
+                <span class="hide-on-mobile" style="font-size:11px; color:#aaa; margin-right:2px;">Tốc độ</span>
                 <button class="btn-speed" onclick="changeSpeed(-0.01)">-</button>
                 
                 <span id="speedDisplay" onclick="resetSpeed()" title="Reset về 1.00" style="
-                    font-weight: bold; min-width: 35px; text-align: center; cursor: pointer; user-select: none;">
+                    font-weight: bold; min-width: 32px; text-align: center; cursor: pointer; user-select: none; font-size: 13px;">
                     1.00
                 </span>
                 
                 <button class="btn-speed" onclick="changeSpeed(0.01)">+</button>
             </div>
         </div>
+
         <div class="player-header">
             <div class="now-playing" id="songTitle">Chưa chọn bài hát</div>
             <button id="playerHeart" class="btn-heart btn-heart-player" onclick="toggleFavoriteCurrent()">🤍</button>
