@@ -1,4 +1,4 @@
-// src/modules/downloader-backend.js - Version 11.0
+// src/modules/downloader-backend.js - Version 11.1
 
 const path = require('path');
 const fs = require('fs');
@@ -233,7 +233,21 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
     }
 }
 
-async function processDownload(url, indices = [], formatId = null) {
+async function processDownload(url, arg2 = null, arg3 = null) {
+    // Logic tự động nhận diện tham số:
+    // arg2 có thể là indices (mảng) hoặc formatId (chuỗi)
+    
+    let indices = [];
+    let formatId = null;
+
+    if (Array.isArray(arg2)) {
+        indices = arg2;         // Nếu tham số 2 là mảng -> nó là indices
+        formatId = arg3;        // Tham số 3 là formatId
+    } else if (typeof arg2 === 'string') {
+        formatId = arg2;        // Nếu tham số 2 là chuỗi -> nó là formatId (trường hợp tải video lẻ)
+        indices = [];
+    }
+
     if (state.isProcessing) return; 
     state.isProcessing = true; state.shouldStop = false; state.logs = []; 
     addLog(`🚀 Bắt đầu...`);
@@ -252,14 +266,8 @@ async function processDownload(url, indices = [], formatId = null) {
         const info = await getPreviewInfo(url);
         let items = info.entries || [];
 
-        // --- LỌC BÀI HÁT (INDICES) ---
-        // Frontend gửi Indices bắt đầu từ 1 (User view: 1, 2, 3...)
-        // Array của chúng ta bắt đầu từ 0
         if (Array.isArray(indices) && indices.length > 0) {
             items = items.filter((_, idx) => {
-                // Ví dụ: User chọn bài số 1 -> indices có chứa số 1 -> ta lấy items[0]
-                // index thực của array là idx. User index là idx + 1.
-                // Kiểm tra xem (idx + 1) có nằm trong danh sách indices user gửi không
                 return indices.includes(idx + 1);
             });
             addLog(`🎯 Đã lọc: Tải ${items.length} bài theo yêu cầu.`);

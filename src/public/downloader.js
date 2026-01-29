@@ -242,7 +242,7 @@ async function checkLink() {
             setDisplay(videoListBox, 'none');
 
             // --- PHÂN LOẠI UI: PLAYLIST vs SINGLE VIDEO ---
-            if (info.type === 'Playlist' || 'playlist' && info.count > 1) {
+            if ((info.type === 'Playlist' || info.type === 'playlist') && info.count > 1) {
                 // >> GIAO DIỆN PLAYLIST
                 setDisplay(btnDownloadAll, 'block');
                 if (btnDownloadAll) btnDownloadAll.innerText = '⬇️ TẢI TOÀN BỘ (' + info.count + ')';
