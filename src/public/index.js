@@ -13,6 +13,7 @@ let isPreloaded = false;
 
 // --- 1. KHỞI TẠO ---
 // --- src/public/index.js ---
+window.init = init;
 
 async function init() {
     try {

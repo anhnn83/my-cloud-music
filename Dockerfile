@@ -1,40 +1,38 @@
-# Dockerfile - Final Fix (Alpine + Which + PyCryptodomex)
-FROM node:20-alpine
+# Dockerfile - Final Stable (Debian Slim)
+FROM node:20-slim
 
 WORKDIR /app
 
-# 1. Cài đặt các gói hệ thống CỐT LÕI
-# - python3, py3-pip: Môi trường chạy yt-dlp
-# - ffmpeg: Xử lý video/audio
-# - which: [QUAN TRỌNG NHẤT] Giúp yt-dlp tìm thấy đường dẫn Node.js (Fix lỗi Runtime)
-# - build-base, python3-dev: Để cài thư viện giải mã
-RUN apk add --no-cache python3 py3-pip ffmpeg which build-base python3-dev
+# 1. Cài đặt Python, FFmpeg và gói 'which'
+# - build-essential, libffi-dev: Để cài curl-cffi
+# - which: Để yt-dlp tìm thấy lệnh 'node'
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ffmpeg \
+    build-essential \
+    libffi-dev \
+    which \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# 2. Tạo liên kết (Symlink) - Chỉ đường rõ ràng
-# yt-dlp thường tìm node ở /usr/bin/node
-RUN ln -s /usr/local/bin/node /usr/bin/node || true
-# Tạo liên kết python -> python3 (fix lỗi npm install)
-RUN ln -sf /usr/bin/python3 /usr/bin/python
+# 2. Tạo Symlink (Chỉ đường dẫn)
+RUN ln -s /usr/bin/python3 /usr/bin/python && \
+    ln -s /usr/local/bin/node /usr/bin/node && \
+    ln -s /usr/local/bin/node /usr/bin/nodejs
 
-# 3. Cài đặt yt-dlp và thư viện giải mã Native
-# pycryptodomex: Giải mã chữ ký YouTube bằng C++ (Không cần JS, cực nhanh)
-RUN pip install --no-cache-dir yt-dlp pycryptodomex mutagen --break-system-packages
+# 3. Cài đặt yt-dlp + curl-cffi
+# - curl-cffi: Hỗ trợ tính năng impersonate
+# - yt-dlp[default]: Cài đầy đủ modules
+RUN pip3 install --no-cache-dir "yt-dlp[default,curl-cffi]" pycryptodomex mutagen brotli certifi --break-system-packages
 
-# 4. Dọn dẹp bộ biên dịch (để image nhẹ lại)
-RUN apk del build-base python3-dev
-
-# 5. Setup thư mục
+# 4. Setup App
 RUN mkdir -p /app/temp_downloads && chmod 777 /app/temp_downloads
-
-# 6. Cài đặt App
 COPY package*.json ./
 RUN npm install --production
-
-# 7. Copy code
 COPY . .
 
-# Mở port
 EXPOSE 3000
-
-# Chạy ứng dụng
 CMD ["node", "src/app.js"]

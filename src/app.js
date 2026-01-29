@@ -10,7 +10,7 @@ const { db } = require('./modules/db');
 const { scanFolderRecursive, getScanStatus } = require('./modules/scanner');
 const { getSongStream, preloadSong } = require('./modules/streamer');
 const { cleanCache } = require('./modules/cacheCleaner');
-const { processDownload, getPreviewInfo, getStatus, stopDownload } = require('./modules/downloader');
+const { processDownload, getPreviewInfo, getStatus, stopDownload } = require('./modules/downloader-backend');
 
 const PORT = process.env.PORT || 3000;
 const ROOT_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
@@ -91,7 +91,7 @@ fastify.get('/api/auth-status', async (request, reply) => {
 // --- HOOK BẢO MẬT ---
 // --- GLOBAL HOOK: BẢO VỆ TOÀN DIỆN ---
 fastify.addHook('preHandler', async (request, reply) => {
-    const path = request.url.split('?')[0]; // Lấy đường dẫn không kèm query
+    const urlpath = request.url.split('?')[0]; // Lấy đường dẫn không kèm query
 
     // 1. KIỂM TRA TRẠNG THÁI ĐĂNG NHẬP (COOKIE)
     let isAuthenticated = false;
@@ -116,7 +116,7 @@ fastify.addHook('preHandler', async (request, reply) => {
     ];
 
     // Nếu đường dẫn nằm trong Whitelist -> Cho qua luôn
-    if (publicWhitelist.includes(path)) {
+    if (publicWhitelist.includes(urlpath)) {
         return;
     }
 
@@ -125,7 +125,7 @@ fastify.addHook('preHandler', async (request, reply) => {
     if (!isAuthenticated) {
         // Trường hợp đặc biệt: Nếu người dùng cố vào downloader.html bằng link trực tiếp
         // -> Chuyển hướng (Redirect) về trang chủ để bắt nhập PIN
-        if (path === '/downloader.html' || path === '/downloader.js') {
+        if (path === '/downloader.html' || urlpath === '/downloader.js') {
             return reply.redirect('/');
         }
 
@@ -227,16 +227,23 @@ fastify.get('/api/download/status', async (request, reply) => {
 
 // 3. Lấy danh sách bài hát
 fastify.get('/api/songs', async (request, reply) => {
-    // Lấy danh sách từ DB
     const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id ORDER BY s.folder_path, s.name`);
     const songs = stmt.all();
 
-    // [MỚI] Kiểm tra nhanh xem file đã có trong thư mục cache chưa
-    // Lưu ý: Sync check ở đây với 2000 bài có thể hơi chậm, nhưng chấp nhận được với SSD.
-    // Nếu muốn nhanh hơn, hãy dùng biến toàn cục Set() lưu danh sách cache như module scanner.
+    // Lấy danh sách cache 1 lần duy nhất
+    let cachedSet = new Set();
+    try {
+        if (fs.existsSync(CACHE_ROOT)) {
+            const files = await fs.promises.readdir(CACHE_ROOT);
+            files.forEach(f => {
+                if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
+            });
+        }
+    } catch (e) {}
+
+    // Map dữ liệu (tốc độ cực nhanh vì chỉ check Set trong RAM)
     songs.forEach(s => {
-        const checkPath = path.join(CACHE_ROOT, `${s.id}.mp3`);
-        s.is_cached = fs.existsSync(checkPath); // Gắn cờ true/false
+        s.is_cached = cachedSet.has(s.id);
     });
 
     return { total: songs.length, data: songs };

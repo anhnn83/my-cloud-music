@@ -372,6 +372,11 @@ function startPolling() {
                 }
                 
                 setDisplay(btnStop, 'none');
+
+                if (typeof window.init === 'function' && typeof window.updateLibrary !== 'undefined') {
+                    console.log("🔄 Auto-refreshing library...");
+                    window.init(); 
+                }
                 
                 if(!document.getElementById('btnReset')) {
                     const btnReset = document.createElement('button');
