@@ -1,4 +1,4 @@
-// src/modules/downloader-backend.js - Version FINAL
+// src/modules/downloader-backend.js - Version 11.0
 
 const path = require('path');
 const fs = require('fs');
@@ -67,6 +67,7 @@ async function getPreviewInfo(url) {
         const ytArgs = {
             dumpSingleJson: true,
             noWarnings: true,
+            yesPlaylist: isPlaylistUrl,
             flatPlaylist: isPlaylistUrl,
             extractorArgs: 'youtube:player_client=web',
             jsRuntimes: 'node',
