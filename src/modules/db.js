@@ -69,10 +69,18 @@ try {
 
 // [MỚI] Thêm cột Thời gian tạo (Created At) để lọc bài mới tải
 try {
-    // DEFAULT CURRENT_TIMESTAMP sẽ tự động lấy giờ hiện tại khi insert bài mới
+    // 1. Thử thêm cột (nếu chưa có)
     db.exec("ALTER TABLE songs ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
 } catch (error) {
     // Bỏ qua lỗi nếu cột đã tồn tại
+}
+
+// 2. [QUAN TRỌNG] Backfill: Cập nhật thời gian cho các bài hát cũ đang bị NULL
+try {
+    // Lệnh này đảm bảo 1924 bài cũ của bạn sẽ có ngày giờ để hiển thị
+    db.exec("UPDATE songs SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
+} catch (e) {
+    console.error("Lỗi update thời gian bài hát cũ:", e);
 }
 
 // Tạo sẵn dữ liệu mặc định nếu chưa có
