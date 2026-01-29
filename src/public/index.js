@@ -1,5 +1,5 @@
-// src/public/index.js - Version 3.0
-console.log("--- src/public/index.js - Version 3.0 ---");
+// src/public/index.js - Version 3.1 (Top 100 mới)
+console.log("--- src/public/index.js - Version 3.1 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;

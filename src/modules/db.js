@@ -1,4 +1,4 @@
-// src/modules/db.js
+// src/modules/db.js - Version 1.1 (Top 100 mới)
 
 const Database = require('better-sqlite3');
 const path = require('path');

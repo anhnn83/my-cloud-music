@@ -1,4 +1,4 @@
-// src/app.js - Version 6.1
+// src/app.js - Version 6.2 (Top 100 Mới)
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
