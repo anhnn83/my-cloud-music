@@ -228,7 +228,7 @@ async function checkLink() {
             if(img && info.thumbnail) { img.src = info.thumbnail; img.style.display='block'; }
             
             // Lưu dữ liệu trả về
-            currentPlaylistItems = info.items || [];
+            currentPlaylistItems = info.entries || [];
             currentFormats = info.formats || [];
             validUrl = info.url;
 
