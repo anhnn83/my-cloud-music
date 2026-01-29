@@ -1,4 +1,4 @@
-// src/modules/db.js - Version 1.1 (Top 100 mới)
+// src/modules/db.js - Version 2.0 (Migration Fix)
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -10,13 +10,12 @@ if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// [SỬA LẠI TÊN FILE CHO ĐÚNG VỚI CỦA BẠN]
 const dbPath = path.join(dataDir, 'music.db'); 
 const db = new Database(dbPath);
 
-// --- TẠO BẢNG DỮ LIỆU ---
+// --- 1. TẠO CÁC BẢNG CƠ BẢN (NẾU CHƯA CÓ) ---
 
-// 1. Bảng bài hát (Songs) - Có thêm cột drive_link
+// Bảng bài hát
 db.exec(`
   CREATE TABLE IF NOT EXISTS songs (
     id TEXT PRIMARY KEY,
@@ -29,7 +28,7 @@ db.exec(`
   )
 `);
 
-// 2. Bảng lịch sử nghe
+// Bảng lịch sử nghe
 db.exec(`
   CREATE TABLE IF NOT EXISTS playback_history (
     song_id TEXT PRIMARY KEY,
@@ -39,10 +38,10 @@ db.exec(`
   )
 `);
 
-// [MỚI] Bảng cài đặt người dùng (User Settings)
+// Bảng cài đặt người dùng
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1), -- Chỉ cho phép 1 dòng duy nhất
+    id INTEGER PRIMARY KEY CHECK (id = 1),
     play_from_start INTEGER DEFAULT 0,
     skip_mode INTEGER DEFAULT 0,
     skip_start INTEGER DEFAULT 5,
@@ -50,41 +49,50 @@ db.exec(`
   )
 `);
 
-// [CẬP NHẬT] Thêm cột lưu trạng thái Shuffle/Repeat
-// Dùng try-catch để tránh lỗi nếu cột đã tồn tại (khi chạy lại server nhiều lần)
-try {
-    db.exec("ALTER TABLE user_settings ADD COLUMN shuffle_mode INTEGER DEFAULT 0");
-    db.exec("ALTER TABLE user_settings ADD COLUMN repeat_mode INTEGER DEFAULT 0");
-} catch (error) {
-    // Bỏ qua lỗi "duplicate column name" nếu đã chạy rồi
-}
-
-// [MỚI] Thêm cột Điểm Nhiệt (Trending Score)
-try {
-    // Kiểu REAL (số thực) để lưu điểm thập phân khi bị trừ %
-    db.exec("ALTER TABLE songs ADD COLUMN trending_score REAL DEFAULT 0");
-} catch (error) {
-    // Bỏ qua lỗi nếu cột đã tồn tại
-}
-
-// [MỚI] Thêm cột Thời gian tạo (Created At) để lọc bài mới tải
-try {
-    // 1. Thử thêm cột (nếu chưa có)
-    db.exec("ALTER TABLE songs ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
-} catch (error) {
-    // Bỏ qua lỗi nếu cột đã tồn tại
-}
-
-// 2. [QUAN TRỌNG] Backfill: Cập nhật thời gian cho các bài hát cũ đang bị NULL
-try {
-    // Lệnh này đảm bảo 1924 bài cũ của bạn sẽ có ngày giờ để hiển thị
-    db.exec("UPDATE songs SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
-} catch (e) {
-    console.error("Lỗi update thời gian bài hát cũ:", e);
-}
-
-// Tạo sẵn dữ liệu mặc định nếu chưa có
+// Tạo dữ liệu cài đặt mặc định nếu chưa có
 db.exec(`INSERT OR IGNORE INTO user_settings (id) VALUES (1)`);
+
+
+// --- 2. HÀM MIGRATION AN TOÀN (TỰ ĐỘNG SỬA LỖI THIẾU CỘT) ---
+
+function addColumnIfNotExists(tableName, columnName, columnDef) {
+    try {
+        // Lấy danh sách cột hiện tại của bảng
+        const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+        const exists = columns.some(c => c.name === columnName);
+        
+        if (!exists) {
+            console.log(`⚡ Đang thêm cột '${columnName}' vào bảng '${tableName}'...`);
+            db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
+            console.log(`✅ Đã thêm cột '${columnName}' thành công.`);
+            
+            // LOGIC RIÊNG: Nếu là cột created_at, cập nhật luôn dữ liệu cho các bài cũ
+            if (columnName === 'created_at') {
+                console.log(`⏳ Đang cập nhật thời gian cho các bài hát cũ...`);
+                db.exec("UPDATE songs SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
+            }
+        }
+    } catch (error) {
+        console.error(`❌ Lỗi Migration (${columnName}):`, error.message);
+    }
+}
+
+// --- 3. THỰC HIỆN CẬP NHẬT DB ---
+
+// Thêm cột Shuffle/Repeat cho User Settings
+addColumnIfNotExists('user_settings', 'shuffle_mode', 'INTEGER DEFAULT 0');
+addColumnIfNotExists('user_settings', 'repeat_mode', 'INTEGER DEFAULT 0');
+
+// Thêm cột Điểm Nhiệt (Trending Score) cho bài hát
+addColumnIfNotExists('songs', 'trending_score', 'REAL DEFAULT 0');
+
+// [QUAN TRỌNG] Thêm cột Thời gian tạo (Created At) để sửa lỗi của bạn
+addColumnIfNotExists('songs', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+
+// Chạy thêm một lần nữa lệnh update để đảm bảo 100% bài cũ không bị NULL
+try {
+    db.exec("UPDATE songs SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");
+} catch(e) {}
 
 console.log('✅ Database đã sẵn sàng (SQLite): music.db');
 
