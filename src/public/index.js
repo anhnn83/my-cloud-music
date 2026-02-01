@@ -447,10 +447,26 @@ function updatePlayBtn(p) {
     isPlaying = p; 
 }
 
-function formatTime(s) { 
-    if(!s || isNaN(s)) return '0:00'; 
-    const m=Math.floor(s/60), sc=Math.floor(s%60); 
-    return `${m}:${sc<10?'0'+sc:sc}`; 
+function formatTime(s) {
+    if (!s || isNaN(s)) return '0:00';
+    
+    // 1. Tính toán Giờ, Phút, Giây
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sc = Math.floor(s % 60);
+    
+    // 2. Tạo chuỗi format (thêm số 0 vào trước nếu < 10)
+    const mStr = m < 10 ? '0' + m : m;
+    const scStr = sc < 10 ? '0' + sc : sc;
+    
+    // 3. Logic hiển thị
+    // Nếu có giờ (> 0) -> Trả về H:MM:SS (Ví dụ: 1:05:20)
+    if (h > 0) {
+        return `${h}:${mStr}:${scStr}`;
+    }
+    
+    // Nếu bài ngắn (< 1 giờ) -> Vẫn giữ M:SS cho gọn (Ví dụ: 5:30)
+    return `${m}:${scStr}`;
 }
 
 // --- 6. CONTROLS & LOGIC ---

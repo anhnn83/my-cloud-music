@@ -225,12 +225,54 @@ fastify.get('/api/download/status', async (request, reply) => {
     return getStatus();
 });
 
+//======================================================================
 // 3. Lấy danh sách bài hát
-fastify.get('/api/songs', async (request, reply) => {
-    const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id ORDER BY s.folder_path, s.name`);
-    const songs = stmt.all();
+// fastify.get('/api/songs', async (request, reply) => {
+//     const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id ORDER BY s.folder_path, s.name`);
+//     const songs = stmt.all();
 
-    // Lấy danh sách cache 1 lần duy nhất
+//     // Lấy danh sách cache 1 lần duy nhất
+//     let cachedSet = new Set();
+//     try {
+//         if (fs.existsSync(CACHE_ROOT)) {
+//             const files = await fs.promises.readdir(CACHE_ROOT);
+//             files.forEach(f => {
+//                 if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
+//             });
+//         }
+//     } catch (e) {}
+
+//     // Map dữ liệu (tốc độ cực nhanh vì chỉ check Set trong RAM)
+//     songs.forEach(s => {
+//         s.is_cached = cachedSet.has(s.id);
+//     });
+
+//     return { total: songs.length, data: songs };
+// });
+//======================================================================
+
+// 3. Lấy danh sách bài hát (Đã nâng cấp Natural Sort)
+fastify.get('/api/songs', async (request, reply) => {
+    // 1. Lấy dữ liệu thô (Bỏ ORDER BY trong SQL để JS xử lý)
+    const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id`);
+    let songs = stmt.all();
+
+    // 2. Sắp xếp thông minh (Natural Sort: 1 -> 2 -> 10)
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    
+    songs.sort((a, b) => {
+        // Ưu tiên xếp theo Folder trước
+        const folderA = (a.folder_path || '').trim();
+        const folderB = (b.folder_path || '').trim();
+        const folderDiff = collator.compare(folderA, folderB);
+        
+        if (folderDiff !== 0) return folderDiff;
+        
+        // Nếu cùng Folder thì xếp theo Tên bài hát
+        return collator.compare(a.name, b.name);
+    });
+
+    // 3. Lấy danh sách cache 1 lần duy nhất (Giữ nguyên logic cũ của bạn)
     let cachedSet = new Set();
     try {
         if (fs.existsSync(CACHE_ROOT)) {
@@ -241,13 +283,14 @@ fastify.get('/api/songs', async (request, reply) => {
         }
     } catch (e) {}
 
-    // Map dữ liệu (tốc độ cực nhanh vì chỉ check Set trong RAM)
+    // Map dữ liệu
     songs.forEach(s => {
         s.is_cached = cachedSet.has(s.id);
     });
 
     return { total: songs.length, data: songs };
 });
+
 
 // [MỚI] API Lấy danh sách ID các file đã được cache
 fastify.get('/api/cache-list', async (request, reply) => {

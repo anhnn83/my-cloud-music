@@ -323,10 +323,29 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); backgrou
 }
 
 /* Dòng 1: [Thư mục] Tên bài hát */
-.song-title-row {
+/* .song-title-row {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 1rem;
+    color: var(--light);
+} */
+
+.song-title-row {
+    /* Cho phép xuống dòng */
+    white-space: normal;
+    
+    /* Logic hiển thị tối đa 2 dòng, sau đó mới hiện dấu ... */
+    display: -webkit-box;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    
+    /* Căn chỉnh lại dòng cho dễ đọc */
+    line-height: 1.3;
+    margin-bottom: 6px; /* Tăng khoảng cách với dòng meta bên dưới một chút */
+    
     font-size: 1rem;
     color: var(--light);
 }
