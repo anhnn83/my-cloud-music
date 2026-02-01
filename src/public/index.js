@@ -712,7 +712,7 @@ function renderPlaylist() {
         const cleanName = song.name.replace(/\.(mp3|flac|wav|m4a|aac|ogg)$/i, '');
         
         // 2. Xử lý tên thư mục: Bỏ dấu gạch chéo
-        const cleanFolder = (song.folder_path || 'Root').replace('/', '');
+        const cleanFolder = (song.folder_path || 'Root').replace(/\//g, ' › ');
 
         // 3. Tính phần trăm tiến trình (Dựa trên lịch sử nghe)
         // Lưu ý: song.current_time lấy từ DB, song.duration lấy từ metadata
@@ -734,6 +734,7 @@ function renderPlaylist() {
             <div class="song-info">
                 <div class="song-title-row">
                     <span class="folder-badge">[${cleanFolder}]</span>
+                    <span style="color: #666; margin: 0 5px;">-</span>
                     ${cleanName}
                 </div>
                 
