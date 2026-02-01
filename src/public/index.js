@@ -734,7 +734,6 @@ function renderPlaylist() {
             <div class="song-info">
                 <div class="song-title-row">
                     <span class="folder-badge">[${cleanFolder}]</span>
-                    <span style="color: #666; margin: 0 5px;">-</span>
                     ${cleanName}
                 </div>
                 
