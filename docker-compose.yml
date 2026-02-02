@@ -12,6 +12,7 @@ services:
       - ./temp_downloads:/app/temp_downloads
       - ./credentials.json:/app/credentials.json
       - ./src:/app/src
+      - ./yt-cache:/root/.cache/yt-dlp
     env_file:
       - .env
     environment:

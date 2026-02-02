@@ -1,4 +1,4 @@
-// src/modules/downloader-backend.js - Version 11.1
+// src/modules/downloader-backend.js - Version 11.2
 
 const path = require('path');
 const fs = require('fs');
@@ -73,7 +73,9 @@ async function getPreviewInfo(url) {
             jsRuntimes: 'node',
             // impersonate: 'chrome-110', 
             noCheckCertificates: true,
-            // forceIpv4: true
+            forceIpv4: true,
+            username: 'oauth2',
+            password: ''
         };
 
         const rawOutput = await yt(url, ytArgs, { ytDlpBinaryPath: YTDLP_PATH });
@@ -177,9 +179,11 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             jsRuntimes: 'node',
             // impersonate: 'chrome-110', 
             noCheckCertificates: true,
-            // forceIpv4: true,
+            forceIpv4: true,
             concurrentFragments: DOWNLOAD_FRAGMENTS,
-            retries: 10
+            retries: 10,
+            username: 'oauth2',
+            password: ''
         };
 
         if (formatId) {
