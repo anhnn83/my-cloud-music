@@ -551,17 +551,42 @@ function seekAudio() {
 // --- 7. FAVORITE & SEARCH ---
 function toggleFavorite(event, songId) {
     event.stopPropagation();
-    const song = allSongs.find(s => s.id === songId);
-    if (!song) return;
+    
+    // ✅ Tìm trong currentPlaylist trước (vì nó chứa danh sách Top 100/Mới tải hiện tại)
+    // Nếu không thấy thì mới tìm trong allSongs (dự phòng)
+    let song = currentPlaylist.find(s => s.id === songId);
+    if (!song) {
+        song = allSongs.find(s => s.id === songId);
+    }
+    
+    if (!song) {
+        console.warn("Không tìm thấy bài hát để toggle favorite:", songId);
+        return;
+    }
+    
     fetch('/api/favorite/toggle', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ songId }) })
         .then(r => r.json()).then(d => {
+            if(d.status === 'error') {
+                 // Nếu lỗi (ví dụ bài hát chưa có trong DB), thông báo cho người dùng
+                 alert(d.message);
+                 return;
+            }
+
+            // Cập nhật trạng thái cho bài hát tìm được
             song.is_favorite = d.is_favorite;
+
+            // Đồng bộ trạng thái vào allSongs (nếu bài đó cũng nằm trong allSongs)
+            const globalSong = allSongs.find(s => s.id === songId);
+            if (globalSong) globalSong.is_favorite = d.is_favorite;
+
+            // ... (Logic render lại giao diện giữ nguyên)
             if (document.getElementById('folderFilter').value === 'favorites' && !song.is_favorite) {
                 currentPlaylist = currentPlaylist.filter(s => s.id !== songId);
             }
             renderPlaylist();
             if (currentIndex !== -1 && currentPlaylist[currentIndex].id === songId) updatePlayerHeart(song.is_favorite);
-        });
+        })
+        .catch(err => console.error("Lỗi toggle favorite:", err));
 }
 
 function toggleFavoriteCurrent() {
