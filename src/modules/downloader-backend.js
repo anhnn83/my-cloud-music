@@ -71,9 +71,9 @@ async function getPreviewInfo(url) {
             flatPlaylist: true,
             extractorArgs: 'youtube:player_client=android',
             jsRuntimes: 'node',
-            impersonate: 'chrome-110', 
+            // impersonate: 'chrome-110', 
             noCheckCertificates: true,
-            forceIpv4: true
+            // forceIpv4: true
         };
 
         const rawOutput = await yt(url, ytArgs, { ytDlpBinaryPath: YTDLP_PATH });
@@ -176,8 +176,10 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             extractorArgs: 'youtube:player_client=android', 
             jsRuntimes: 'node',
             impersonate: 'chrome-110', 
-            noCheckCertificates: true, forceIpv4: true,
-            concurrentFragments: DOWNLOAD_FRAGMENTS, retries: 10
+            noCheckCertificates: true,
+            forceIpv4: true,
+            concurrentFragments: DOWNLOAD_FRAGMENTS,
+            retries: 10
         };
 
         if (formatId) {
