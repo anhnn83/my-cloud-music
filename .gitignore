@@ -1,7 +1,7 @@
 # 1. Bảo mật (Tuyệt đối không upload)
 .env
 credentials.json
-
+cookies.txt
 # 2. Thư viện & Hệ thống (Nặng, không cần thiết)
 node_modules/
 .DS_Store
