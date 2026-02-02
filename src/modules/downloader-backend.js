@@ -1,4 +1,4 @@
-// src/modules/downloader-backend.js - Version 11.3
+// src/modules/downloader-backend.js - Version 11.4
 
 const path = require('path');
 const fs = require('fs');
@@ -69,9 +69,9 @@ async function getPreviewInfo(url) {
             noWarnings: true,
             // yesPlaylist: isPlaylistUrl,
             flatPlaylist: true,
-            extractorArgs: 'youtube:player_client=android',
+            // extractorArgs: 'youtube:player_client=android',
             jsRuntimes: 'node',
-            // impersonate: 'chrome-110', 
+            impersonate: 'chrome-110', 
             noCheckCertificates: true,
             forceIpv4: true,
             // username: 'oauth2',
@@ -176,9 +176,9 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             embedThumbnail: true, addMetadata: true, 
             output: outputTemplate,
             noPlaylist: true,
-            extractorArgs: 'youtube:player_client=android', 
+            // extractorArgs: 'youtube:player_client=android', 
             jsRuntimes: 'node',
-            // impersonate: 'chrome-110', 
+            impersonate: 'chrome-110', 
             noCheckCertificates: true,
             forceIpv4: true,
             concurrentFragments: DOWNLOAD_FRAGMENTS,
