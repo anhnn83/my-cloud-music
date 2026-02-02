@@ -175,9 +175,9 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             noPlaylist: true,
             extractorArgs: 'youtube:player_client=android', 
             jsRuntimes: 'node',
-            impersonate: 'chrome-110', 
+            // impersonate: 'chrome-110', 
             noCheckCertificates: true,
-            forceIpv4: true,
+            // forceIpv4: true,
             concurrentFragments: DOWNLOAD_FRAGMENTS,
             retries: 10
         };
