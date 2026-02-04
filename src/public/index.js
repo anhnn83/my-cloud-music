@@ -303,46 +303,58 @@ function prepareNextSong() {
 
 // src/public/index.js
 
+// [FIX iOS PWA - V3] Hàm loadSong tối ưu hóa cho Background Audio
 async function loadSong(song, autoPlay = true) {
     updatePlayerUI(song);
     updateMediaSession(song);
     isPreloaded = false;
     prepareNextSong();
 
-    // Reset các event cũ để tránh lặp
-    // Lưu ý: Không gọi audio.pause() ở đây để tránh đứt luồng âm thanh
-    
-    // [OFFLINE UPDATE] Kiểm tra xem bài hát có trong IndexedDB không
+    // 1. Dọn dẹp URL cũ để tránh rò rỉ bộ nhớ trên iOS
+    if (audio.src && audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src);
+    }
+
+    // 2. Reset nhẹ player (nhưng không pause để tránh mất Audio Focus)
+    audio.oncanplay = null;
+    audio.onerror = null;
+
     let isPlayingOffline = false;
-    if (typeof OfflineDB !== 'undefined') {
-        const offlineBlob = await OfflineDB.getSong(song.id);
-        if (offlineBlob) {
-            console.log("📂 Playing from Offline DB:", song.name);
-            const url = URL.createObjectURL(offlineBlob);
-            audio.src = url;
-            isPlayingOffline = true;
+    let sourceUrl = '';
+
+    // 3. Lấy nguồn nhạc (Offline trước, Online sau)
+    try {
+        if (typeof OfflineDB !== 'undefined') {
+            const offlineBlob = await OfflineDB.getSong(song.id);
+            if (offlineBlob) {
+                console.log("📂 Playing Offline:", song.name);
+                sourceUrl = URL.createObjectURL(offlineBlob);
+                isPlayingOffline = true;
+            }
         }
-    }
+    } catch (e) { console.error("DB Error:", e); }
 
-    // Nếu không có offline, stream từ server
     if (!isPlayingOffline) {
-        console.log("☁️ Playing from Server:", song.name);
-        audio.src = `/stream/${song.id}?t=${Date.now()}`;
+        console.log("☁️ Playing Server:", song.name);
+        sourceUrl = `/stream/${song.id}?t=${Date.now()}`;
     }
 
-    // [FIX iOS PWA] Sử dụng 'canplay' thay vì 'loadedmetadata'
-    // 'canplay' đảm bảo iOS đã buffer đủ dữ liệu để chạy, tránh bị kill process
-    const playHandler = () => {
-        // Gỡ bỏ listener ngay lập tức
-        audio.removeEventListener('canplay', playHandler);
+    // 4. Gán nguồn và thiết lập phát
+    audio.src = sourceUrl;
+    audio.playbackRate = currentSpeed;
+    
+    // [iOS TRICK] Gán autoplay = true ngay lập tức
+    if (autoPlay) audio.autoplay = true;
 
-        // Áp dụng tốc độ phát
-        audio.playbackRate = currentSpeed;
+    // 5. Xử lý sự kiện khi sẵn sàng phát (canplay)
+    audio.oncanplay = () => {
+        // Gỡ bỏ ngay để không lặp lại khi seek
+        audio.oncanplay = null;
 
-        // Xử lý logic Skip / Resume
-        const cbStart = document.getElementById('cbPlayFromStart').checked;
-        const cbSkip = document.getElementById('cbSkipMode').checked;
-        const skipStartVal = parseInt(document.getElementById('inpSkipStart').value) || 0;
+        // Xử lý thời gian bắt đầu (Skip intro...)
+        const cbStart = document.getElementById('cbPlayFromStart')?.checked;
+        const cbSkip = document.getElementById('cbSkipMode')?.checked;
+        const skipStartVal = parseInt(document.getElementById('inpSkipStart')?.value) || 0;
 
         let startTime = 0;
         if (!cbStart && song.current_time && song.current_time > 5 && song.current_time < song.duration - 5) {
@@ -350,35 +362,40 @@ async function loadSong(song, autoPlay = true) {
         }
         if (cbSkip && startTime < skipStartVal) startTime = skipStartVal;
 
-        // Gán thời gian bắt đầu
-        if(isFinite(startTime)) audio.currentTime = startTime;
-        
-        if(autoPlay) {
+        if (isFinite(startTime) && startTime > 0) {
+            audio.currentTime = startTime;
+        }
+
+        // Thực thi lệnh phát
+        if (autoPlay) {
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise
                     .then(() => {
                         updatePlayBtn(true);
-                        updateMediaSession(song);
+                        updateMediaSession(song); // Cập nhật lại MediaSession để màn hình khóa hiện đúng
                     })
                     .catch(e => {
-                        console.warn("Autoplay blocked/Interrupted on iOS:", e);
+                        console.warn("AutoPlay blocked/interrupted:", e);
                         updatePlayBtn(false);
-                        
-                        // [FIX iOS] Thử kích hoạt lại lần nữa sau 500ms nếu bị chặn (Hy vọng mong manh ở background)
-                        setTimeout(() => {
-                            if(audio.paused) audio.play().catch(()=>{});
-                        }, 500);
+                        // [iOS RETRY] Thử lại 1 lần nếu thất bại (do đổi mạng hoặc lag)
+                        setTimeout(() => audio.play().catch(()=>{}), 1000);
                     });
             }
         }
     };
 
-    // Sử dụng 'canplay' an toàn hơn cho iOS
-    audio.addEventListener('canplay', playHandler);
-    
-    // [FIX iOS] Bắt buộc gọi load() khi đổi src bằng Javascript
-    audio.load(); 
+    // 6. Xử lý lỗi
+    audio.onerror = (e) => {
+        console.error("Audio Error:", e);
+        if (autoPlay && !navigator.onLine && !isPlayingOffline) {
+            // Nếu mất mạng mà đang cố stream -> Tự động qua bài
+            playNext(true);
+        }
+    };
+
+    // [iOS] Bắt buộc load lại
+    audio.load();
 }
 
 // --- 4. SỰ KIỆN AUDIO ---
@@ -873,10 +890,10 @@ function updateMediaSession(song) {
             artist: "My Cloud Music",
             album: song.folder_path || "Unknown Album",
             artwork: [
-                { src: 'https://cdn-icons-png.flaticon.com/512/461/461238.png', sizes: '96x96', type: 'image/png' },
-                { src: 'https://cdn-icons-png.flaticon.com/512/461/461238.png', sizes: '128x128', type: 'image/png' },
-                { src: 'https://cdn-icons-png.flaticon.com/512/461/461238.png', sizes: '192x192', type: 'image/png' },
-                { src: 'https://cdn-icons-png.flaticon.com/512/461/461238.png', sizes: '512x512', type: 'image/png' },
+                { src: '/icon.png', sizes: '96x96', type: 'image/png' },
+                { src: '/icon.png', sizes: '128x128', type: 'image/png' },
+                { src: '/icon.png', sizes: '192x192', type: 'image/png' },
+                { src: '/icon.png', sizes: '512x512', type: 'image/png' },
             ]
         });
 

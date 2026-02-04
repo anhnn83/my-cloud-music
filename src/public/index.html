@@ -281,6 +281,20 @@
             } catch(e) {}
         })();
 
+        // [iOS HACK] Mở khóa Audio Context ngay lần chạm đầu tiên
+        document.body.addEventListener('touchstart', function() {
+            const audio = document.getElementById('audio');
+            if (audio && !audio.src) {
+                // Tạo một buffer rỗng cực ngắn
+                audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABBTZGF0YQQAAAD///8=';
+                audio.play().then(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    console.log("🔊 Audio Context Unlocked for iOS");
+                }).catch(()=>{});
+            }
+        }, { once: true }); // Chỉ chạy 1 lần duy nhất
+        
         // [MỚI] PWA Registration
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
