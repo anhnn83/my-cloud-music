@@ -954,16 +954,15 @@ function seekRelative(seconds) {
     }
 }
 
-// [MỚI] Hàm xử lý khi bấm vào icon Cache (💾)
+// [CẬP NHẬT] Hàm xử lý khi bấm vào icon Cache (💾) - Có cập nhật UI
 async function refreshServerCache(event, songId) {
-    event.stopPropagation(); // Ngăn không cho phát nhạc khi bấm vào icon
+    event.stopPropagation(); 
     
-    if (!confirm('Bạn có chắc muốn xóa bản cache cũ trên Server và tải lại bản mới từ Drive không?')) return;
+    if (!confirm('Bạn có chắc muốn xóa bản cache cũ và tải lại dữ liệu mới từ Drive?')) return;
 
     const iconSpan = event.target;
     const originalText = iconSpan.innerText;
     
-    // Hiệu ứng đang xử lý
     iconSpan.innerText = '⏳';
     iconSpan.style.cursor = 'wait';
 
@@ -974,25 +973,56 @@ async function refreshServerCache(event, songId) {
             body: JSON.stringify({ songId })
         });
         
-        const data = await res.json();
+        const response = await res.json();
 
-        if (res.ok) {
-            showStatus("✅ Đã xóa cache cũ. Server đang tải lại...", 3000);
-            // Tạm thời đổi thành icon chưa cache để user biết nó đang tải lại
-            iconSpan.innerText = '🚫';
-            iconSpan.title = 'Đang tải lại...';
-            
-            // Sau 5 giây check lại xem tải xong chưa (Optional)
-            setTimeout(() => {
-                // Gọi lại API cache-list để update UI nếu cần, hoặc để tự nhiên
-            }, 5000);
+        if (res.ok && response.data) {
+            const newSongData = response.data;
+            showStatus(`✅ Đã cập nhật: ${formatTime(newSongData.duration)}`, 3000);
+
+            // --- 1. CẬP NHẬT DỮ LIỆU TRONG RAM ---
+            // Cập nhật trong danh sách tổng
+            const globalIndex = allSongs.findIndex(s => s.id === songId);
+            if (globalIndex !== -1) {
+                // Giữ lại các thuộc tính local (như is_favorite) nếu API không trả về
+                allSongs[globalIndex] = { ...allSongs[globalIndex], ...newSongData };
+                // Reset trạng thái cache để icon chuyển về chưa cache (đang tải lại)
+                allSongs[globalIndex].is_cached = false; 
+            }
+
+            // Cập nhật trong playlist hiện tại
+            const playlistIndex = currentPlaylist.findIndex(s => s.id === songId);
+            if (playlistIndex !== -1) {
+                currentPlaylist[playlistIndex] = { ...currentPlaylist[playlistIndex], ...newSongData };
+                currentPlaylist[playlistIndex].is_cached = false;
+            }
+
+            // --- 2. CẬP NHẬT GIAO DIỆN NGAY LẬP TỨC ---
+            const songItem = document.getElementById(`song-${songId}`);
+            if (songItem) {
+                // Cập nhật thời lượng text
+                const timeSpan = songItem.querySelector('.song-meta-row span:nth-child(2)');
+                if (timeSpan) timeSpan.innerText = formatTime(newSongData.duration);
+                
+                // Cập nhật icon về trạng thái chờ tải
+                iconSpan.innerText = '🚫';
+                iconSpan.title = 'Server đang tải lại file mới...';
+            }
+
+            // --- 3. NẾU ĐANG PHÁT BÀI NÀY -> CẬP NHẬT PLAYER ---
+            if (currentIndex !== -1 && currentPlaylist[currentIndex].id === songId) {
+                const totalTimeEl = document.getElementById('totalTime');
+                const seekBar = document.getElementById('seekBar');
+                if (totalTimeEl) totalTimeEl.innerText = formatTime(newSongData.duration);
+                if (seekBar) seekBar.max = newSongData.duration;
+            }
+
         } else {
-            throw new Error(data.error);
+            throw new Error(response.error || 'Lỗi không xác định');
         }
     } catch (e) {
         console.error(e);
         showStatus("❌ Lỗi: " + e.message, 3000);
-        iconSpan.innerText = originalText; // Trả lại icon cũ nếu lỗi
+        iconSpan.innerText = originalText; 
     } finally {
         iconSpan.style.cursor = 'pointer';
     }

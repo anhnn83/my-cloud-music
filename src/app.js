@@ -1,4 +1,4 @@
-// src/app.js - Version 6.5
+// src/app.js - Version 6.6
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -516,37 +516,37 @@ fastify.get('/api/songs/top100', async (request, reply) => {
 });
 
 // [MỚI] API Lấy Top 100 Mới tải (Sắp xếp theo created_at giảm dần)
-fastify.get('/api/songs/recent', async (request, reply) => {
+fastify.post('/api/cache/refresh', async (request, reply) => {
+    const { songId } = request.body;
+    if (!songId) return reply.code(400).send({ error: 'Thiếu Song ID' });
+
+    const filePath = path.join(CACHE_ROOT, `${songId}.mp3`);
+
     try {
-        const stmt = db.prepare(`
-            SELECT s.*, h.current_time 
-            FROM songs s 
-            LEFT JOIN playback_history h ON s.id = h.song_id 
-            ORDER BY s.created_at DESC 
-            LIMIT 100
-        `);
-        const recentSongs = stmt.all();
-        
-        // Vẫn check cache như logic cũ để hiển thị icon
-        const cacheDir = path.join(__dirname, '../cache');
-        let cachedSet = new Set();
-        try {
-            if (fs.existsSync(cacheDir)) {
-                const files = await fs.promises.readdir(cacheDir);
-                files.forEach(f => {
-                    if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
-                });
-            }
-        } catch (e) {}
+        // 1. Xóa file cache cũ
+        if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch(e) {}
+            console.log(`🗑️ [Force Refresh] Đã xóa cache file: ${songId}`);
+        }
 
-        recentSongs.forEach(song => {
-            song.is_cached = cachedSet.has(song.id);
-        });
+        // 2. Force Update Metadata từ Drive
+        console.log(`🔄 Đang đồng bộ lại metadata: ${songId}...`);
+        await scanNewFile(songId, true);
 
-        return recentSongs;
-    } catch (e) {
-        console.error("Recent Songs Error:", e);
-        return [];
+        // 3. Kích hoạt tải lại
+        preloadSong(songId); 
+
+        // 4. [MỚI] Lấy thông tin mới nhất từ DB để trả về cho Frontend
+        const updatedSong = db.prepare('SELECT * FROM songs WHERE id = ?').get(songId);
+
+        return { 
+            status: 'success', 
+            message: 'Đã cập nhật thành công.',
+            data: updatedSong // Trả về object bài hát mới (có duration mới)
+        };
+    } catch (err) {
+        console.error("Lỗi refresh cache:", err);
+        return reply.code(500).send({ error: 'Lỗi hệ thống.' });
     }
 });
 
