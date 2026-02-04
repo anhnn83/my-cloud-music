@@ -8,7 +8,7 @@ const fs = require('fs');
 
 // Import modules
 const { db } = require('./modules/db');
-const { scanFolderRecursive, getScanStatus } = require('./modules/scanner');
+const { scanFolderRecursive, getScanStatus, scanNewFile } = require('./modules/scanner');
 const { getSongStream, preloadSong } = require('./modules/streamer');
 const { cleanCache } = require('./modules/cacheCleaner');
 const { processDownload, getPreviewInfo, getStatus, stopDownload } = require('./modules/downloader-backend');
