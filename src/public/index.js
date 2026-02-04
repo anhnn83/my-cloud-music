@@ -900,22 +900,42 @@ function updateMediaSession(song) {
         // [FIX RESUME BUG] Cập nhật handler cho nút Play/Pause
         const actionHandlers = [
             ['play', () => {
-                // Nếu đang bị iOS đóng băng, thử load lại nhẹ
-                if (audio.readyState === 0) {
-                    audio.load();
-                }
-                
-                audio.play()
-                    .then(() => {
+                // Bước 1: Thử phát bình thường
+                const playPromise = audio.play();
+
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        // [QUAN TRỌNG] Hack cho iOS PWA:
+                        // Khi resume từ background, buffer có thể bị lệch. 
+                        // Việc gán lại currentTime = chính nó sẽ buộc iOS Audio Engine đồng bộ lại dữ liệu.
+                        if (audio.duration && !isNaN(audio.duration)) {
+                            audio.currentTime = audio.currentTime; 
+                        }
+                        
                         updatePlayBtn(true);
-                        // Cập nhật lại trạng thái playback cho hệ thống biết
                         navigator.mediaSession.playbackState = "playing";
                     })
                     .catch((e) => {
-                        console.error("Resume failed:", e);
-                        // Thử force play nếu lỗi
-                        updatePlayBtn(false);
+                        console.warn("Background resume failed, reloading stream...", e);
+                        
+                        // Bước 2: Fallback (Nếu socket đã bị iOS ngắt hoàn toàn)
+                        // Lưu lại vị trí hiện tại -> Load lại stream -> Tua tới vị trí cũ -> Phát
+                        const savedTime = audio.currentTime;
+                        audio.load(); // Tái tạo kết nối mạng
+                        
+                        // Đợi 1 chút để load event kích hoạt (dùng one-shot listener)
+                        const onCanPlayOnce = () => {
+                            audio.currentTime = savedTime;
+                            audio.play().then(() => {
+                                updatePlayBtn(true);
+                                navigator.mediaSession.playbackState = "playing";
+                            }).catch(() => {});
+                            audio.removeEventListener('canplay', onCanPlayOnce);
+                        };
+                        
+                        audio.addEventListener('canplay', onCanPlayOnce);
                     });
+                }
             }],
             ['pause', () => {
                 audio.pause();
