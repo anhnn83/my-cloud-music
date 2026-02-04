@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Cloud Music</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/icon.png">
+    <link rel="manifest" href="/manifest.json"> 
     <link rel="stylesheet" href="style.css">
     
     <style>
@@ -34,7 +39,7 @@
         </div>
         
         <div class="controls-top">
-            <button id="btnSearchToggle" class="btn-icon-only" onclick="toggleSearch()" title="Tìm kiếm">🔎</button>
+             <button id="btnSearchToggle" class="btn-icon-only" onclick="toggleSearch()" title="Tìm kiếm">🔎</button>
             
             <select id="folderFilter" onchange="filterPlaylist()">
                 <option value="favorites">❤️ Bài hát yêu thích</option>
@@ -229,11 +234,13 @@
         <audio id="audio" style="display:none;" preload="metadata"></audio>
     </div>
 
+    <script src="offline-db.js"></script>
     <script src="index.js"></script>
     <script src="downloader.js"></script>
 
     <script>
-        // --- LOGIC PIN & AUTH (GIỮ NGUYÊN) ---
+        // --- LOGIC PIN & AUTH ---
+        // (Giữ nguyên logic PIN của bạn)
         const pinInput = document.getElementById('pinInput');
         const btnUnlock = document.querySelector('.btn-unlock');
 
@@ -272,6 +279,15 @@
                 } else { pinInput.focus(); }
             } catch(e) {}
         })();
+
+        // [MỚI] PWA Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('✅ SW registered:', reg.scope))
+                    .catch(err => console.error('❌ SW failed:', err));
+            });
+        }
     </script>
 </body>
 </html>

@@ -1,7 +1,8 @@
-// src/app.js - Version 6.3 (PlaybackRate)
+// src/app.js - Version 6.4
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
+fastify.register(require('@fastify/compress'));
 const path = require('path');
 const fs = require('fs');
 
@@ -23,10 +24,22 @@ fastify.register(require('@fastify/cookie'), {
     parseOptions: {}     
 });
 
-// 2. Đăng ký Static (Public)
+// 2. Đăng ký Static (Public) - Có cấu hình Header cho SW
 fastify.register(require('@fastify/static'), {
     root: path.join(__dirname, 'public'),
     prefix: '/',
+    setHeaders: (res, pathStr) => {
+        // Nếu là file service worker -> Không cache
+        if (pathStr.endsWith('sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+        // Nếu là file manifest -> Set đúng Content-Type
+        if (pathStr.endsWith('manifest.json')) {
+             res.setHeader('Content-Type', 'application/manifest+json');
+        }
+    }
 });
 
 // --- BẢO MẬT: BRUTE FORCE PROTECTION ---
