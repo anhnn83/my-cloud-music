@@ -391,3 +391,32 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); backgrou
 .song-item.active .mini-progress-fill {
     background-color: #fff;
 }
+
+.btn-dl {
+    background: transparent;
+    border: 1px solid #555;
+    color: #aaa;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+/* Thêm mới cho tính năng nghe offline */
+.btn-dl:hover {
+    border-color: #fff;
+    color: #fff;
+}
+
+.btn-dl.downloaded {
+    border-color: #1db954;
+    color: #1db954; /* Màu xanh Spotify */
+    background: rgba(29, 185, 84, 0.1);
+}
+
+.action-group {
+    margin-left: auto; /* Đẩy nhóm nút sang phải */
+    padding-left: 10px;
+}
