@@ -8,7 +8,7 @@ const ASSETS_TO_CACHE = [
   '/downloader.js',
   '/offline-db.js', // File mới sẽ tạo ở bước 2
   '/favicon.ico',
-  'https://cdn-icons-png.flaticon.com/512/461/461238.png' // Icon
+  '/icon.png' // Icon
 ];
 
 // 1. Install: Cache toàn bộ file giao diện
