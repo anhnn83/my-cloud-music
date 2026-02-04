@@ -1,4 +1,4 @@
-// src/app.js - Version 6.4
+// src/app.js - Version 6.5
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -329,20 +329,27 @@ fastify.post('/api/cache/refresh', async (request, reply) => {
     const filePath = path.join(CACHE_ROOT, `${songId}.mp3`);
 
     try {
-        // 1. Xóa file cũ nếu tồn tại
+        // 1. Xóa file cache cũ trên ổ cứng (Bắt buộc)
         if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            console.log(`🗑️ [Force Refresh] Đã xóa cache cũ: ${songId}`);
+            try { fs.unlinkSync(filePath); } catch(e) {}
+            console.log(`🗑️ [Force Refresh] Đã xóa cache file: ${songId}`);
         }
 
-        // 2. Kích hoạt tải lại (Preload)
-        // Lưu ý: Hàm này chạy ngầm, không đợi tải xong mới trả response để tránh timeout
+        // 2. [QUAN TRỌNG] Cập nhật lại thông tin trong Database từ Drive
+        // Gọi với tham số true để Force Update (bỏ qua cache DB cũ)
+        console.log(`🔄 Đang đồng bộ lại metadata từ Drive cho bài hát: ${songId}...`);
+        await scanNewFile(songId, true);
+
+        // 3. Kích hoạt tải file mới về cache (Chạy ngầm)
         preloadSong(songId); 
 
-        return { status: 'success', message: 'Đã xóa cache cũ và đang tải lại bản mới.' };
+        return { 
+            status: 'success', 
+            message: 'Đã xóa cache cũ, cập nhật DB và đang tải bản mới.' 
+        };
     } catch (err) {
         console.error("Lỗi refresh cache:", err);
-        return reply.code(500).send({ error: 'Không thể xóa file cache.' });
+        return reply.code(500).send({ error: 'Lỗi hệ thống khi làm mới.' });
     }
 });
 

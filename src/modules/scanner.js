@@ -1,4 +1,4 @@
-// src/modules/scanner.js - Version 10.2
+// src/modules/scanner.js - Version 10.3 (Force Update Support)
 const drive = require('./drive');
 const { db } = require('./db');
 const path = require('path');
@@ -10,10 +10,9 @@ let scanState = {
 };
 
 // 1. Cache bộ nhớ: Chứa ID và Duration của các bài hát ĐÃ CÓ trong DB
-// Để tránh việc phải đọc lại file stream những bài đã xử lý ngon lành.
 let dbCache = new Map(); 
 
-// 2. Tập hợp chứa tất cả ID tìm thấy thực tế trên Drive (Để so sánh xóa file rác)
+// 2. Tập hợp chứa tất cả ID tìm thấy thực tế trên Drive
 let foundFileIds = new Set(); 
 
 function addScanLog(message) {
@@ -32,7 +31,7 @@ async function getMusicMetadata() {
     return mmLibrary;
 }
 
-// --- HÀM 1: CHUẨN BỊ CACHE TỪ DB (BÍ QUYẾT TĂNG TỐC) ---
+// --- HÀM 1: CHUẨN BỊ CACHE TỪ DB ---
 function loadDbToCache() {
     try {
         const rows = db.prepare('SELECT id, duration FROM songs').all();
@@ -63,7 +62,7 @@ async function listFiles(folderId) {
     }
 }
 
-// --- HÀM 3: ĐỌC DURATION (NẶNG - CHỈ CHẠY KHI CẦN) ---
+// --- HÀM 3: ĐỌC DURATION (NẶNG) ---
 async function fetchDurationFromStream(fileId, fileSize, fileName) {
     try {
         const mm = await getMusicMetadata();
@@ -82,61 +81,59 @@ async function fetchDurationFromStream(fileId, fileSize, fileName) {
     return 0;
 }
 
-// --- HÀM 4: XỬ LÝ 1 FILE (THÔNG MINH HƠN) ---
-async function processSingleFile(file, folderPath) {
-    foundFileIds.add(file.id); // Đánh dấu là file này còn tồn tại trên Drive
+// --- HÀM 4: XỬ LÝ 1 FILE (CORE LOGIC) ---
+// [CẬP NHẬT] Thêm tham số forceUpdate = false
+async function processSingleFile(file, folderPath, forceUpdate = false) {
+    foundFileIds.add(file.id); 
 
-    // KIỂM TRA CACHE: Nếu bài này đã có trong DB và duration > 0 -> BỎ QUA XỬ LÝ NẶNG
     const cachedDuration = dbCache.get(file.id);
     
-    // Logic: Nếu đã có Duration trong DB (tức là > 0), ta coi như file đã ổn.
-    // Trừ khi bạn muốn cập nhật lại duration thì mới force chạy lại.
-    if (cachedDuration && cachedDuration > 0) {
-        // CHỈ CẬP NHẬT ĐƯỜNG DẪN (Folder Path) phòng khi di chuyển file
-        // Đây là thao tác rất nhẹ (Light Update)
+    // [QUAN TRỌNG] Logic bỏ qua xử lý nặng:
+    // Chỉ bỏ qua khi: KHÔNG phải force update VÀ đã có duration trong Cache
+    if (!forceUpdate && cachedDuration && cachedDuration > 0) {
+        // Light Update: Chỉ cập nhật tên, link, folder, size (đề phòng đổi tên/di chuyển)
         const stmt = db.prepare(`
-            UPDATE songs SET 
-                name = ?, 
-                drive_link = ?, 
-                folder_path = ?, 
-                size = ? 
-            WHERE id = ?
+            UPDATE songs SET name = ?, drive_link = ?, folder_path = ?, size = ? WHERE id = ?
         `);
         stmt.run(file.name, file.webContentLink, folderPath, file.size, file.id);
-        
-        // Return 0 nghĩa là "không có gì mới quan trọng", nhưng vẫn tính là đã quét
         return 0; 
     }
 
-    // --- NẾU ĐẾN ĐÂY NGHĨA LÀ FILE MỚI HOẶC FILE CŨ BỊ LỖI (0:00) ---
-    // Ta mới bắt đầu tốn tài nguyên để tính toán
+    // --- NẾU XUỐNG ĐÂY: LÀ FILE MỚI HOẶC ĐANG FORCE UPDATE ---
     
     let duration = 0;
-    // 1. Thử lấy từ Google Metadata (Nhanh)
-    if (file.videoMediaMetadata?.durationMillis) {
+    
+    // 1. Ưu tiên lấy từ Google Metadata (Nhanh)
+    if (file.videoMediaMetadata && file.videoMediaMetadata.durationMillis) {
         duration = Math.floor(parseInt(file.videoMediaMetadata.durationMillis) / 1000);
     }
 
-    // 2. Nếu Google không có -> Tải stream (Chậm)
+    // 2. Nếu Google chưa index hoặc forceUpdate mà duration = 0 -> Tải stream về soi lại
     if (duration === 0) {
-        // addScanLog(`🔍 Đang phân tích kỹ thuật số: ${file.name}`);
+        // addScanLog(`🔍 Phân tích sâu: ${file.name}`);
         duration = await fetchDurationFromStream(file.id, file.size, file.name);
     }
 
-    // 3. Ghi vào DB (Upsert)
+    // 3. Ghi vào DB (Upsert - Chèn hoặc Cập nhật)
+    // [FIX SQL] Đảm bảo cập nhật toàn bộ thông tin khi Conflict (trùng ID)
     const stmt = db.prepare(`
         INSERT INTO songs (id, name, size, drive_link, folder_path, duration)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE duration END,
-            drive_link = excluded.drive_link,
-            folder_path = excluded.folder_path
+            duration = excluded.duration,      -- Cập nhật thời lượng mới
+            size = excluded.size,              -- Cập nhật dung lượng mới
+            drive_link = excluded.drive_link,  -- Cập nhật link mới
+            folder_path = excluded.folder_path,
+            name = excluded.name
     `);
     
     const info = stmt.run(file.id, file.name, file.size, file.webContentLink, folderPath, duration);
     
-    // Cập nhật lại cache luôn để dùng cho lần sau (nếu trong cùng 1 phiên quét có lặp lại logic nào đó)
-    if (duration > 0) dbCache.set(file.id, duration);
+    // Cập nhật lại cache RAM để đồng bộ
+    if (duration > 0) {
+        dbCache.set(file.id, duration);
+        if (forceUpdate) console.log(`✨ Đã làm mới metadata: ${file.name} (${duration}s)`);
+    }
 
     return info.changes > 0 ? 1 : 0;
 }
@@ -144,41 +141,31 @@ async function processSingleFile(file, folderPath) {
 // Hàm dọn dẹp file rác
 function cleanupDeletedFiles() {
     addScanLog(`🧹 Đang dọn dẹp file đã xóa trên Drive...`);
-    
-    // Vì dbCache chứa toàn bộ ID trong DB lúc đầu, ta có thể dùng nó để đối chiếu nhanh
     let deletedCount = 0;
     const deleteStmt = db.prepare('DELETE FROM songs WHERE id = ?');
 
-    // Duyệt qua tất cả ID có trong DB
     for (const [id, _] of dbCache) {
-        // Nếu ID trong DB mà KHÔNG tìm thấy trên Drive đợt này -> Xóa
         if (!foundFileIds.has(id)) {
             deleteStmt.run(id);
             deletedCount++;
         }
     }
 
-    if (deletedCount > 0) addScanLog(`🗑️ Đã xóa ${deletedCount} bài hát rác khỏi Database.`);
-    else addScanLog(`✅ Database đồng bộ hoàn toàn.`);
+    if (deletedCount > 0) addScanLog(`🗑️ Đã xóa ${deletedCount} bài hát rác.`);
+    else addScanLog(`✅ Database sạch sẽ.`);
     return deletedCount;
 }
 
 // --- HÀM 5: QUÉT ĐỆ QUY CHÍNH ---
 async function scanFolderRecursive(folderId, parentPath = '') {
-    // KHI BẮT ĐẦU (ROOT)
     if (folderId === process.env.DRIVE_FOLDER_ID && !parentPath) {
         scanState.isScanning = true;
         scanState.logs = [];
         foundFileIds.clear(); 
-        
-        addScanLog(`🚀 BẮT ĐẦU QUÉT THÔNG MINH (INCREMENTAL SCAN)...`);
-        
-        // [QUAN TRỌNG] Tải dữ liệu cũ lên RAM để đối chiếu
+        addScanLog(`🚀 BẮT ĐẦU QUÉT (INCREMENTAL)...`);
         loadDbToCache();
     }
 
-    // addScanLog(`📂 Quét: ...${folderId.slice(-5)}`);
-    
     let count = 0;
     const files = await listFiles(folderId);
     
@@ -193,51 +180,37 @@ async function scanFolderRecursive(folderId, parentPath = '') {
     const subFolders = files.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
     const songFiles = files.filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
 
-    // Đệ quy Folder con
     for (const folder of subFolders) {
         const subPath = parentPath ? path.join(parentPath, folder.name) : folder.name;
         count += await scanFolderRecursive(folder.id, subPath);
     }
 
-    // Xử lý File nhạc
     const folderPath = parentPath || currentFolderName || 'Root';
-    
-    // Vì ta đã có cơ chế Cache Skip, ta có thể tăng Batch Size lên để quét nhanh hơn các file đã tồn tại
     const BATCH_SIZE = 10; 
 
     if (songFiles.length > 0) {
         for (let i = 0; i < songFiles.length; i += BATCH_SIZE) {
             const batch = songFiles.slice(i, i + BATCH_SIZE);
-            const results = await Promise.all(batch.map(file => processSingleFile(file, folderPath)));
-            
-            // Tính tổng số bài có sự thay đổi thực sự (Mới thêm hoặc cập nhật duration)
+            // Gọi processSingleFile mặc định (forceUpdate = false)
+            const results = await Promise.all(batch.map(file => processSingleFile(file, folderPath, false)));
             count += results.reduce((a, b) => a + b, 0);
-            
-            // Chỉ log nếu có thay đổi hoặc định kỳ
-            if ((i + BATCH_SIZE) % 50 === 0) {
-                // addScanLog(`   ...Đang kiểm tra ${Math.min(i + BATCH_SIZE, songFiles.length)}/${songFiles.length} bài tại ${folderPath}`);
-            }
         }
     }
 
-    // KHI KẾT THÚC (ROOT)
     if (folderId === process.env.DRIVE_FOLDER_ID && !parentPath) {
         const deleted = cleanupDeletedFiles();
         scanState.isScanning = false;
-        
-        // Giải phóng RAM
         dbCache.clear(); 
-        
-        addScanLog(`🎉 QUÉT XONG! Thêm mới/Sửa lỗi: ${count} bài. Xóa: ${deleted} bài.`);
+        addScanLog(`🎉 HOÀN TẤT! Cập nhật: ${count}. Xóa: ${deleted}.`);
     }
 
     return count;
 }
 
-// --- HÀM MỚI: QUÉT NHANH 1 FILE VỪA UPLOAD (Dùng cho Downloader) ---
-async function scanNewFile(fileId) {
+// --- HÀM 6: QUÉT NHANH 1 FILE (Hỗ trợ Force Update) ---
+// [CẬP NHẬT] Thêm tham số forceUpdate = false
+async function scanNewFile(fileId, forceUpdate = false) {
     try {
-        // 1. Lấy metadata của file từ Drive (để biết size, link, duration...)
         const res = await drive.files.get({
             fileId: fileId,
             fields: 'id, name, mimeType, size, webContentLink, videoMediaMetadata, parents',
@@ -245,8 +218,7 @@ async function scanNewFile(fileId) {
         });
         const file = res.data;
 
-        // 2. Lấy tên thư mục cha (để lưu vào DB cột folder_path)
-        let folderName = 'Downloads'; // Mặc định
+        let folderName = 'Downloads'; 
         if (file.parents && file.parents.length > 0) {
             try {
                 const parentRes = await drive.files.get({
@@ -258,9 +230,8 @@ async function scanNewFile(fileId) {
             } catch(e) {}
         }
 
-        // 3. Gọi hàm xử lý cốt lõi (Tận dụng logic của Scanner v10)
-        // Hàm này sẽ tự động tính duration, upsert vào DB và update Cache
-        await processSingleFile(file, folderName);
+        // Truyền forceUpdate xuống processSingleFile
+        await processSingleFile(file, folderName, forceUpdate);
         
         return true;
     } catch (e) {
