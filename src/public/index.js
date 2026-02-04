@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.2
-console.log("--- src/public/index.js - Version 4.2 ---");
+// src/public/index.js - Version 4.4
+console.log("--- src/public/index.js - Version 4.4 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -897,44 +897,48 @@ function updateMediaSession(song) {
             ]
         });
 
-        // [FIX RESUME BUG] Cập nhật handler cho nút Play/Pause
         const actionHandlers = [
             ['play', () => {
-                // Bước 1: Thử phát bình thường
-                const playPromise = audio.play();
+                // [FIX FINAL iOS PWA] Chiến thuật: "Tái tạo kết nối mạng"
+                
+                // 1. Nếu đang phát nhạc Offline (Blob) -> Play bình thường (vì file nằm trong RAM/Disk)
+                if (audio.src.startsWith('blob:')) {
+                    audio.play()
+                        .then(() => {
+                            updatePlayBtn(true);
+                            navigator.mediaSession.playbackState = "playing";
+                        })
+                        .catch(e => console.error(e));
+                } 
+                // 2. Nếu là nhạc Online (Stream) -> Buộc tạo request mới
+                else {
+                    const resumeTime = audio.currentTime; // Lưu lại giây hiện tại
+                    
+                    // Lấy URL gốc (bỏ query param cũ)
+                    const baseUrl = audio.src.split('?')[0];
+                    
+                    // Gán URL mới với tham số thời gian mới -> Buộc iOS mở Socket mới
+                    console.log("♻️ iOS PWA Resume: Re-connecting stream...");
+                    audio.src = `${baseUrl}?resume_id=${Date.now()}`;
+                    
+                    // Tua lại vị trí cũ
+                    audio.currentTime = resumeTime;
 
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        // [QUAN TRỌNG] Hack cho iOS PWA:
-                        // Khi resume từ background, buffer có thể bị lệch. 
-                        // Việc gán lại currentTime = chính nó sẽ buộc iOS Audio Engine đồng bộ lại dữ liệu.
-                        if (audio.duration && !isNaN(audio.duration)) {
-                            audio.currentTime = audio.currentTime; 
-                        }
-                        
-                        updatePlayBtn(true);
-                        navigator.mediaSession.playbackState = "playing";
-                    })
-                    .catch((e) => {
-                        console.warn("Background resume failed, reloading stream...", e);
-                        
-                        // Bước 2: Fallback (Nếu socket đã bị iOS ngắt hoàn toàn)
-                        // Lưu lại vị trí hiện tại -> Load lại stream -> Tua tới vị trí cũ -> Phát
-                        const savedTime = audio.currentTime;
-                        audio.load(); // Tái tạo kết nối mạng
-                        
-                        // Đợi 1 chút để load event kích hoạt (dùng one-shot listener)
-                        const onCanPlayOnce = () => {
-                            audio.currentTime = savedTime;
-                            audio.play().then(() => {
+                    // Phát ngay lập tức
+                    const playPromise = audio.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise
+                            .then(() => {
                                 updatePlayBtn(true);
                                 navigator.mediaSession.playbackState = "playing";
-                            }).catch(() => {});
-                            audio.removeEventListener('canplay', onCanPlayOnce);
-                        };
-                        
-                        audio.addEventListener('canplay', onCanPlayOnce);
-                    });
+                            })
+                            .catch((e) => {
+                                console.warn("Resume error:", e);
+                                // Fallback cuối cùng nếu vẫn lỗi
+                                audio.play();
+                            });
+                    }
                 }
             }],
             ['pause', () => {
