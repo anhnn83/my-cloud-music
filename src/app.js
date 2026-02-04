@@ -1,20 +1,21 @@
-// src/app.js - Version 6.6
+// src/app.js - Version FINAL CLEAN
+// Ngày cập nhật: 2024 - Đã tối ưu hóa và làm sạch code
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
-fastify.register(require('@fastify/compress'));
+fastify.register(require('@fastify/compress')); // Nén Gzip để tải JSON nhanh hơn
 const path = require('path');
 const fs = require('fs');
 
-// Import modules
+// --- IMPORT MODULES ---
 const { db } = require('./modules/db');
 const { scanFolderRecursive, getScanStatus, scanNewFile } = require('./modules/scanner');
 const { getSongStream, preloadSong } = require('./modules/streamer');
 const { cleanCache } = require('./modules/cacheCleaner');
 const { processDownload, getPreviewInfo, getStatus, stopDownload } = require('./modules/downloader-backend');
 
+// --- CẤU HÌNH ---
 const PORT = process.env.PORT || 3000;
-const ROOT_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
 const CACHE_ROOT = path.join(__dirname, '../cache');
 const APP_PIN = process.env.APP_PIN || '123456';
 
@@ -24,25 +25,24 @@ fastify.register(require('@fastify/cookie'), {
     parseOptions: {}     
 });
 
-// 2. Đăng ký Static (Public) - Có cấu hình Header cho SW
+// 2. Đăng ký Static (Public) - Cấu hình Header cho PWA
 fastify.register(require('@fastify/static'), {
     root: path.join(__dirname, 'public'),
     prefix: '/',
     setHeaders: (res, pathStr) => {
-        // Nếu là file service worker -> Không cache
         if (pathStr.endsWith('sw.js')) {
+            // Không cache Service Worker để cập nhật phiên bản mới ngay lập tức
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
         }
-        // Nếu là file manifest -> Set đúng Content-Type
         if (pathStr.endsWith('manifest.json')) {
              res.setHeader('Content-Type', 'application/manifest+json');
         }
     }
 });
 
-// --- BẢO MẬT: BRUTE FORCE PROTECTION ---
+// --- BẢO MẬT: RATE LIMIT & LOGIN ---
 const failedAttempts = new Map();
 
 function checkRateLimit(ip) {
@@ -68,7 +68,6 @@ function resetFailure(ip) {
     failedAttempts.delete(ip);
 }
 
-// --- API LOGIN ---
 fastify.post('/api/login', async (request, reply) => {
     const ip = request.ip;
     const { pin } = request.body;
@@ -84,7 +83,7 @@ fastify.post('/api/login', async (request, reply) => {
             path: '/',
             httpOnly: true,
             signed: true,
-            maxAge: 30 * 24 * 60 * 60 
+            maxAge: 365 * 24 * 60 * 60 // 365 ngày
         });
         return { status: 'success' };
     } else {
@@ -101,12 +100,10 @@ fastify.get('/api/auth-status', async (request, reply) => {
     return { authenticated: unsigned.valid && unsigned.value === 'true' };
 });
 
-// --- HOOK BẢO MẬT ---
-// --- GLOBAL HOOK: BẢO VỆ TOÀN DIỆN ---
+// --- HOOK BẢO MẬT TOÀN CỤC ---
 fastify.addHook('preHandler', async (request, reply) => {
-    const urlpath = request.url.split('?')[0]; // Lấy đường dẫn không kèm query
+    const urlpath = request.url.split('?')[0]; 
 
-    // 1. KIỂM TRA TRẠNG THÁI ĐĂNG NHẬP (COOKIE)
     let isAuthenticated = false;
     const cookie = request.cookies.auth_token;
     if (cookie) {
@@ -116,61 +113,41 @@ fastify.addHook('preHandler', async (request, reply) => {
         }
     }
 
-    // 2. DANH SÁCH "VÙNG XANH" (Được phép truy cập khi chưa login)
-    // Bao gồm trang chủ (để hiện login form), file style, và API login
     const publicWhitelist = [
-        '/',                // Trang chủ
-        '/index.html',      // File HTML chính
-        '/index.js',        // Script chính (chứa logic login)
-        '/style.css',       // Giao diện
-        '/favicon.ico',     // Icon
-        '/api/login',       // API gửi PIN
-        '/api/auth-status'  // API check trạng thái
+        '/', '/index.html', '/index.js', '/style.css', 
+        '/favicon.ico', '/icon.png', '/manifest.json', '/sw.js', 
+        '/offline-db.js', '/downloader.js',
+        '/api/login', '/api/auth-status'
     ];
 
-    // Nếu đường dẫn nằm trong Whitelist -> Cho qua luôn
-    if (publicWhitelist.includes(urlpath)) {
-        return;
-    }
+    if (publicWhitelist.includes(urlpath)) return;
 
-    // 3. CÁC VÙNG CẦN BẢO VỆ (VÙNG ĐỎ)
-    // Nếu KHÔNG phải vùng xanh, và chưa đăng nhập -> Chặn
     if (!isAuthenticated) {
-        // Trường hợp đặc biệt: Nếu người dùng cố vào downloader.html bằng link trực tiếp
-        // -> Chuyển hướng (Redirect) về trang chủ để bắt nhập PIN
-        if (path === '/downloader.html' || urlpath === '/downloader.js') {
-            return reply.redirect('/');
-        }
-
-        // Với các API hoặc Stream -> Trả về lỗi 401
+        if (urlpath === '/downloader.html') return reply.redirect('/');
         reply.code(401).send({ error: 'Unauthorized: Vui lòng nhập PIN.' });
-        return reply; // Dừng request
+        return reply; 
     }
-
-    // Nếu đã đăng nhập -> Cho phép đi tiếp (vào Downloader, Stream, API...)
 });
 
-// --- CÁC API CHÍNH ---
+// ============================================================
+// CÁC TÍNH NĂNG CHÍNH
+// ============================================================
 
-// 1. Quét nhạc
+// 1. Quét nhạc & Cài đặt
 fastify.get('/api/scan', async (request, reply) => {
-    // Gọi hàm chạy ngầm, không await để trả về response ngay
     scanFolderRecursive(process.env.DRIVE_FOLDER_ID).catch(console.error);
-    return { status: 'started', message: 'Đã bắt đầu quét. Hãy xem Console (F12) để theo dõi.' };
+    return { status: 'started', message: 'Đã bắt đầu quét ngầm.' };
 });
 
-// [MỚI] API để Frontend lấy Logs Scan
 fastify.get('/api/scan/status', async (request, reply) => {
     return getScanStatus();
 });
 
-// [MỚI] API Lấy cài đặt playback
 fastify.get('/api/settings', async (request, reply) => {
     const settings = db.prepare('SELECT * FROM user_settings WHERE id = 1').get();
     return settings;
 });
 
-// [CẬP NHẬT] API Lưu cài đặt playback (Bao gồm cả Shuffle/Repeat)
 fastify.post('/api/settings', async (request, reply) => {
     const { playFromStart, skipMode, skipStart, skipEnd, isShuffle, loopMode, playbackRate } = request.body;
     
@@ -194,7 +171,10 @@ fastify.post('/api/settings', async (request, reply) => {
     return { status: 'saved' };
 });
 
-// [MỚI] API Lấy thông tin trước khi tải (Preview)
+// ============================================================
+// DOWNLOADER (TẢI NHẠC/VIDEO)
+// ============================================================
+
 fastify.post('/api/preview', async (request, reply) => {
     const { url } = request.body;
     if (!url) return reply.code(400).send({ error: 'Thiếu URL' });
@@ -207,85 +187,51 @@ fastify.post('/api/preview', async (request, reply) => {
     }
 });
 
-// 2. [MỚI] API Tải nhạc từ YouTube
 fastify.post('/api/download', async (request, reply) => {
-    // Lấy thêm formatId
     const { url, indices, formatId } = request.body;
     
     const currentStatus = getStatus();
     if (currentStatus.isProcessing) {
-        return reply.code(409).send({ error: '⚠️ Hệ thống đang bận tải một danh sách khác.' });
+        return reply.code(409).send({ error: '⚠️ Hệ thống đang bận tải danh sách khác.' });
     }
 
     if (!url || (!url.includes('youtube.com') && !url.includes('youtu.be'))) {
         return reply.code(400).send({ error: 'Link không hợp lệ' });
     }
 
-    // Truyền formatId vào hàm xử lý
     processDownload(url, indices || null, formatId || null);
-
     return { status: 'started', message: 'Đã bắt đầu tiến trình.' };
 });
 
-// [MỚI] API Dừng tải
 fastify.post('/api/download/stop', async (request, reply) => {
     stopDownload();
     return { status: 'stopping', message: 'Đã gửi lệnh dừng.' };
 });
 
-// [MỚI] API Lấy trạng thái tiến độ (Frontend sẽ gọi mỗi 1s)
 fastify.get('/api/download/status', async (request, reply) => {
     return getStatus();
 });
 
-//======================================================================
-// 3. Lấy danh sách bài hát
-// fastify.get('/api/songs', async (request, reply) => {
-//     const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id ORDER BY s.folder_path, s.name`);
-//     const songs = stmt.all();
+// ============================================================
+// QUẢN LÝ BÀI HÁT & CACHE
+// ============================================================
 
-//     // Lấy danh sách cache 1 lần duy nhất
-//     let cachedSet = new Set();
-//     try {
-//         if (fs.existsSync(CACHE_ROOT)) {
-//             const files = await fs.promises.readdir(CACHE_ROOT);
-//             files.forEach(f => {
-//                 if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
-//             });
-//         }
-//     } catch (e) {}
-
-//     // Map dữ liệu (tốc độ cực nhanh vì chỉ check Set trong RAM)
-//     songs.forEach(s => {
-//         s.is_cached = cachedSet.has(s.id);
-//     });
-
-//     return { total: songs.length, data: songs };
-// });
-//======================================================================
-
-// 3. Lấy danh sách bài hát (Đã nâng cấp Natural Sort)
+// Lấy toàn bộ bài hát (Sắp xếp tự nhiên)
 fastify.get('/api/songs', async (request, reply) => {
-    // 1. Lấy dữ liệu thô (Bỏ ORDER BY trong SQL để JS xử lý)
     const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id`);
     let songs = stmt.all();
 
-    // 2. Sắp xếp thông minh (Natural Sort: 1 -> 2 -> 10)
+    // Natural Sort (Để "Bài 2" đứng trước "Bài 10")
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-    
     songs.sort((a, b) => {
-        // Ưu tiên xếp theo Folder trước
         const folderA = (a.folder_path || '').trim();
         const folderB = (b.folder_path || '').trim();
         const folderDiff = collator.compare(folderA, folderB);
-        
         if (folderDiff !== 0) return folderDiff;
-        
-        // Nếu cùng Folder thì xếp theo Tên bài hát
         return collator.compare(a.name, b.name);
     });
 
-    // 3. Lấy danh sách cache 1 lần duy nhất (Giữ nguyên logic cũ của bạn)
+    // Check Cache O(1)
     let cachedSet = new Set();
     try {
         if (fs.existsSync(CACHE_ROOT)) {
@@ -296,32 +242,21 @@ fastify.get('/api/songs', async (request, reply) => {
         }
     } catch (e) {}
 
-    // Map dữ liệu
-    songs.forEach(s => {
-        s.is_cached = cachedSet.has(s.id);
-    });
+    songs.forEach(s => { s.is_cached = cachedSet.has(s.id); });
 
     return { total: songs.length, data: songs };
 });
 
-
-// [MỚI] API Lấy danh sách ID các file đã được cache
+// Lấy danh sách ID đã cache (Dùng để update icon realtime)
 fastify.get('/api/cache-list', async (request, reply) => {
     try {
         if (!fs.existsSync(CACHE_ROOT)) return [];
-        // Đọc thư mục cache
         const files = await fs.promises.readdir(CACHE_ROOT);
-        // Chỉ lấy tên file (bỏ đuôi .mp3) -> chính là Song ID
-        const cachedIds = files
-            .filter(f => f.endsWith('.mp3'))
-            .map(f => f.replace('.mp3', ''));
-        return cachedIds;
-    } catch (e) {
-        return [];
-    }
+        return files.filter(f => f.endsWith('.mp3')).map(f => f.replace('.mp3', ''));
+    } catch (e) { return []; }
 });
 
-// [CẬP NHẬT] API Buộc làm mới Cache (Trả về data mới nhất)
+// [API] Buộc làm mới Cache & Database (Khi file gốc thay đổi)
 fastify.post('/api/cache/refresh', async (request, reply) => {
     const { songId } = request.body;
     if (!songId) return reply.code(400).send({ error: 'Thiếu Song ID' });
@@ -339,16 +274,16 @@ fastify.post('/api/cache/refresh', async (request, reply) => {
         console.log(`🔄 Đang đồng bộ lại metadata: ${songId}...`);
         await scanNewFile(songId, true);
 
-        // 3. Kích hoạt tải lại
+        // 3. Kích hoạt tải lại ngầm
         preloadSong(songId); 
 
-        // 4. [MỚI] Lấy thông tin mới nhất từ DB để trả về cho Frontend
+        // 4. Trả về thông tin mới nhất để Frontend update UI
         const updatedSong = db.prepare('SELECT * FROM songs WHERE id = ?').get(songId);
 
         return { 
             status: 'success', 
             message: 'Đã cập nhật thành công.',
-            data: updatedSong // Trả về object bài hát mới (có duration mới)
+            data: updatedSong 
         };
     } catch (err) {
         console.error("Lỗi refresh cache:", err);
@@ -356,7 +291,10 @@ fastify.post('/api/cache/refresh', async (request, reply) => {
     }
 });
 
-// 4. Stream nhạc (Manual Stream)
+// ============================================================
+// STREAM & PLAYBACK
+// ============================================================
+
 fastify.get('/stream/:id', async (request, reply) => {
     try {
         const songId = request.params.id;
@@ -395,7 +333,6 @@ fastify.get('/stream/:id', async (request, reply) => {
     }
 });
 
-// 5. Preload & Progress
 fastify.get('/api/preload/:id', async (request, reply) => {
     preloadSong(request.params.id);
     return { status: 'preloading' };
@@ -416,118 +353,113 @@ fastify.get('/api/last-session', async (request, reply) => {
 fastify.post('/api/favorite/toggle', async (request, reply) => {
     const { songId } = request.body;
     if (!songId) return { status: 'error', message: 'Missing songId' };
-
     try {
-        // Cách 1: Logic an toàn hơn (Tách 2 lệnh để tránh lỗi cú pháp SQL lạ)
         const current = db.prepare('SELECT is_favorite FROM songs WHERE id = ?').get(songId);
-        
-        if (!current) {
-            return { status: 'error', message: 'Bài hát chưa có trong Database (Hãy Scan lại)' };
-        }
+        if (!current) return { status: 'error', message: 'Not found' };
 
         const newValue = current.is_favorite === 1 ? 0 : 1;
         db.prepare('UPDATE songs SET is_favorite = ? WHERE id = ?').run(newValue, songId);
-
         return { status: 'success', is_favorite: newValue };
     } catch (e) {
-        console.error("Favorite Error:", e);
         return { status: 'error', message: 'DB Error' };
     }
 });
 
-setInterval(cleanCache, 12 * 60 * 60 * 1000);
-cleanCache();
+// ============================================================
+// HỆ THỐNG TRENDING & RECENT
+// ============================================================
 
-// --- [MỚI] HỆ THỐNG ĐIỂM NHIỆT (TRENDING SYSTEM) ---
-// 1. API Cộng điểm (Gọi khi nghe hết bài)
 fastify.post('/api/trend/add', async (request, reply) => {
     const { songId } = request.body;
     if (!songId) return;
-
-    // Cộng 10 điểm cho bài hát
     const stmt = db.prepare('UPDATE songs SET trending_score = trending_score + 10 WHERE id = ?');
     stmt.run(songId);
-    
     return { status: 'boosted' };
 });
 
-// 2. API Lấy Top 100 Trending
 fastify.get('/api/songs/top100', async (request, reply) => {
     try {
-        // 1. Lấy toàn bộ bài hát từ DB
-        const stmt = db.prepare(`
-            SELECT s.*, h.current_time 
-            FROM songs s 
-            LEFT JOIN playback_history h ON s.id = h.song_id 
-        `);
+        const stmt = db.prepare(`SELECT s.*, h.current_time FROM songs s LEFT JOIN playback_history h ON s.id = h.song_id`);
         const allSongs = stmt.all();
 
-        // 2. Lấy danh sách các file đang có trong Cache
         const cacheDir = path.join(__dirname, '../cache');
         let cachedSet = new Set();
         try {
-            // Đọc thư mục cache 1 lần duy nhất (nhanh hơn check từng file)
             const files = await fs.promises.readdir(cacheDir);
-            files.forEach(f => {
-                if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', ''));
-            });
-        } catch (e) { console.error("Cache read error:", e); }
+            files.forEach(f => { if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', '')); });
+        } catch (e) {}
 
-        // 3. Phân loại vào 3 giỏ ưu tiên
         const bucketTrending = [];
         const bucketCached = [];
         const bucketRandom = [];
 
         allSongs.forEach(song => {
-            // Đánh dấu cache để Frontend hiển thị icon lun
             song.is_cached = cachedSet.has(song.id);
-
-            if (song.trending_score > 0) {
-                // Ưu tiên 1: Có điểm nhiệt
-                bucketTrending.push(song);
-            } else if (song.is_cached) {
-                // Ưu tiên 2: Chưa có điểm nhưng đã Cache (để nghe offline)
-                bucketCached.push(song);
-            } else {
-                // Ưu tiên 3: Còn lại
-                bucketRandom.push(song);
-            }
+            if (song.trending_score > 0) bucketTrending.push(song);
+            else if (song.is_cached) bucketCached.push(song);
+            else bucketRandom.push(song);
         });
 
-        // 4. Sắp xếp nội bộ từng giỏ
-        
-        // Giỏ 1: Điểm cao xếp trước
         bucketTrending.sort((a, b) => b.trending_score - a.trending_score);
-        
-        // Giỏ 2: Không cần sort (hoặc sort theo tên nếu muốn)
-        
-        // Giỏ 3: Trộn ngẫu nhiên (Shuffle) để mỗi lần vào Top 100 thấy mới lạ
         for (let i = bucketRandom.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [bucketRandom[i], bucketRandom[j]] = [bucketRandom[j], bucketRandom[i]];
         }
 
-        // 5. Gộp lại và cắt lấy 100 bài
         const finalTop100 = [...bucketTrending, ...bucketCached, ...bucketRandom].slice(0, 100);
-
         return finalTop100;
-        
     } catch (e) {
         console.error("Top 100 Error:", e);
         return [];
     }
 });
 
-// 3. Cơ chế "Hạ nhiệt" (Decay) - Chạy mỗi 24 giờ
-// Giảm 10% điểm của tất cả bài hát để các bài cũ từ từ rớt hạng
-setInterval(() => {
-    console.log('📉 [Trending] Đang hạ nhiệt điểm số bài hát (-10%)...');
-    // Chỉ giảm những bài đang có điểm > 0.1 để tránh số quá nhỏ vô nghĩa
-    db.prepare("UPDATE songs SET trending_score = trending_score * 0.9 WHERE trending_score > 0.1").run();
-}, 24 * 60 * 60 * 1000); // 24 giờ
+// [MỚI] API lấy 100 bài hát mới tải gần nhất
+fastify.get('/api/songs/recent', async (request, reply) => {
+    try {
+        const stmt = db.prepare(`
+            SELECT s.*, h.current_time 
+            FROM songs s 
+            LEFT JOIN playback_history h ON s.id = h.song_id 
+            ORDER BY s.created_at DESC 
+            LIMIT 100
+        `);
+        const recentSongs = stmt.all();
+        
+        let cachedSet = new Set();
+        try {
+            if (fs.existsSync(CACHE_ROOT)) {
+                const files = await fs.promises.readdir(CACHE_ROOT);
+                files.forEach(f => { if (f.endsWith('.mp3')) cachedSet.add(f.replace('.mp3', '')); });
+            }
+        } catch (e) {}
 
+        recentSongs.forEach(song => { song.is_cached = cachedSet.has(song.id); });
+        return recentSongs;
+    } catch (e) {
+        console.error("Recent Songs Error:", e);
+        return [];
+    }
+});
+
+// Tác vụ nền: Dọn cache và Giảm điểm nhiệt
+setInterval(cleanCache, 12 * 60 * 60 * 1000); // 12h
+cleanCache();
+
+setInterval(() => {
+    // Mỗi 24h giảm 10% điểm nhiệt
+    console.log('📉 [Trending] Decay started...');
+    db.prepare("UPDATE songs SET trending_score = trending_score * 0.9 WHERE trending_score > 0.1").run();
+}, 24 * 60 * 60 * 1000);
+
+// Start Server
 const start = async () => {
-    try { await fastify.listen({ port: PORT, host: '0.0.0.0' }); console.log(`🚀 Server: http://localhost:${PORT}`); }
-    catch (err) { fastify.log.error(err); process.exit(1); }
+    try { 
+        await fastify.listen({ port: PORT, host: '0.0.0.0' }); 
+        console.log(`🚀 Server đang chạy tại: http://localhost:${PORT}`); 
+    } catch (err) { 
+        fastify.log.error(err); 
+        process.exit(1); 
+    }
 };
 start();
