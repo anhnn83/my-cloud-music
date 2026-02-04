@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.1 (Offline Mode PWA + PlaybackRate)
-console.log("--- src/public/index.js - Version 4.0 (Offline) ---");
+// src/public/index.js - Version 4.2
+console.log("--- src/public/index.js - Version 4.2 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -897,22 +897,62 @@ function updateMediaSession(song) {
             ]
         });
 
+        // [FIX RESUME BUG] Cập nhật handler cho nút Play/Pause
         const actionHandlers = [
-            ['play',          () => { audio.play().catch(()=>{}); updatePlayBtn(true); }],
-            ['pause',         () => { audio.pause(); updatePlayBtn(false); }],
+            ['play', () => {
+                // Nếu đang bị iOS đóng băng, thử load lại nhẹ
+                if (audio.readyState === 0) {
+                    audio.load();
+                }
+                
+                audio.play()
+                    .then(() => {
+                        updatePlayBtn(true);
+                        // Cập nhật lại trạng thái playback cho hệ thống biết
+                        navigator.mediaSession.playbackState = "playing";
+                    })
+                    .catch((e) => {
+                        console.error("Resume failed:", e);
+                        // Thử force play nếu lỗi
+                        updatePlayBtn(false);
+                    });
+            }],
+            ['pause', () => {
+                audio.pause();
+                updatePlayBtn(false);
+                navigator.mediaSession.playbackState = "paused";
+            }],
             ['previoustrack', () => playPrev()],
             ['nexttrack',     () => playNext(true)],
-            ['seekbackward',  (details) => { audio.currentTime = Math.max(audio.currentTime - (details.seekOffset || 10), 0); }],
-            ['seekforward',   (details) => { audio.currentTime = Math.min(audio.currentTime + (details.seekOffset || 10), audio.duration); }],
+            ['seekbackward',  (details) => { 
+                audio.currentTime = Math.max(audio.currentTime - (details.seekOffset || 10), 0); 
+                updatePositionState();
+            }],
+            ['seekforward',   (details) => { 
+                audio.currentTime = Math.min(audio.currentTime + (details.seekOffset || 10), audio.duration); 
+                updatePositionState();
+            }],
             ['seekto',        (details) => { 
                 if (details.fastSeek && 'fastSeek' in audio) audio.fastSeek(details.seekTime);
                 else audio.currentTime = details.seekTime; 
+                updatePositionState();
             }],
         ];
 
         for (const [action, handler] of actionHandlers) {
             try { navigator.mediaSession.setActionHandler(action, handler); } catch (error) {}
         }
+    }
+}
+
+// Hàm phụ trợ để cập nhật vị trí thời gian cho màn hình khóa
+function updatePositionState() {
+    if ('setPositionState' in navigator.mediaSession && !isNaN(audio.duration)) {
+        navigator.mediaSession.setPositionState({
+            duration: audio.duration,
+            playbackRate: audio.playbackRate,
+            position: audio.currentTime
+        });
     }
 }
 
