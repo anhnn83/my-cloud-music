@@ -1,4 +1,4 @@
-// src/public/index.js - Version 4.0 (Offline Mode PWA + PlaybackRate)
+// src/public/index.js - Version 4.1 (Offline Mode PWA + PlaybackRate)
 console.log("--- src/public/index.js - Version 4.0 (Offline) ---");
 
 let scanInterval = null;

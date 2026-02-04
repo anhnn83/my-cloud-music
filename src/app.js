@@ -321,7 +321,7 @@ fastify.get('/api/cache-list', async (request, reply) => {
     }
 });
 
-// [MỚI] API Buộc làm mới Cache (Xóa file cũ -> Tải lại từ Drive)
+// [CẬP NHẬT] API Buộc làm mới Cache (Trả về data mới nhất)
 fastify.post('/api/cache/refresh', async (request, reply) => {
     const { songId } = request.body;
     if (!songId) return reply.code(400).send({ error: 'Thiếu Song ID' });
@@ -329,27 +329,30 @@ fastify.post('/api/cache/refresh', async (request, reply) => {
     const filePath = path.join(CACHE_ROOT, `${songId}.mp3`);
 
     try {
-        // 1. Xóa file cache cũ trên ổ cứng (Bắt buộc)
+        // 1. Xóa file cache cũ
         if (fs.existsSync(filePath)) {
             try { fs.unlinkSync(filePath); } catch(e) {}
             console.log(`🗑️ [Force Refresh] Đã xóa cache file: ${songId}`);
         }
 
-        // 2. [QUAN TRỌNG] Cập nhật lại thông tin trong Database từ Drive
-        // Gọi với tham số true để Force Update (bỏ qua cache DB cũ)
-        console.log(`🔄 Đang đồng bộ lại metadata từ Drive cho bài hát: ${songId}...`);
+        // 2. Force Update Metadata từ Drive
+        console.log(`🔄 Đang đồng bộ lại metadata: ${songId}...`);
         await scanNewFile(songId, true);
 
-        // 3. Kích hoạt tải file mới về cache (Chạy ngầm)
+        // 3. Kích hoạt tải lại
         preloadSong(songId); 
+
+        // 4. [MỚI] Lấy thông tin mới nhất từ DB để trả về cho Frontend
+        const updatedSong = db.prepare('SELECT * FROM songs WHERE id = ?').get(songId);
 
         return { 
             status: 'success', 
-            message: 'Đã xóa cache cũ, cập nhật DB và đang tải bản mới.' 
+            message: 'Đã cập nhật thành công.',
+            data: updatedSong // Trả về object bài hát mới (có duration mới)
         };
     } catch (err) {
         console.error("Lỗi refresh cache:", err);
-        return reply.code(500).send({ error: 'Lỗi hệ thống khi làm mới.' });
+        return reply.code(500).send({ error: 'Lỗi hệ thống.' });
     }
 });
 
@@ -512,41 +515,6 @@ fastify.get('/api/songs/top100', async (request, reply) => {
     } catch (e) {
         console.error("Top 100 Error:", e);
         return [];
-    }
-});
-
-// [MỚI] API Lấy Top 100 Mới tải (Sắp xếp theo created_at giảm dần)
-fastify.post('/api/cache/refresh', async (request, reply) => {
-    const { songId } = request.body;
-    if (!songId) return reply.code(400).send({ error: 'Thiếu Song ID' });
-
-    const filePath = path.join(CACHE_ROOT, `${songId}.mp3`);
-
-    try {
-        // 1. Xóa file cache cũ
-        if (fs.existsSync(filePath)) {
-            try { fs.unlinkSync(filePath); } catch(e) {}
-            console.log(`🗑️ [Force Refresh] Đã xóa cache file: ${songId}`);
-        }
-
-        // 2. Force Update Metadata từ Drive
-        console.log(`🔄 Đang đồng bộ lại metadata: ${songId}...`);
-        await scanNewFile(songId, true);
-
-        // 3. Kích hoạt tải lại
-        preloadSong(songId); 
-
-        // 4. [MỚI] Lấy thông tin mới nhất từ DB để trả về cho Frontend
-        const updatedSong = db.prepare('SELECT * FROM songs WHERE id = ?').get(songId);
-
-        return { 
-            status: 'success', 
-            message: 'Đã cập nhật thành công.',
-            data: updatedSong // Trả về object bài hát mới (có duration mới)
-        };
-    } catch (err) {
-        console.error("Lỗi refresh cache:", err);
-        return reply.code(500).send({ error: 'Lỗi hệ thống.' });
     }
 });
 
