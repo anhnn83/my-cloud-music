@@ -705,7 +705,12 @@ function renderPlaylist() {
                 </div>
                 
                 <div class="song-meta-row">
-                    <span class="meta-icon" title="${isCached ? 'Server Cache' : 'No Cache'}">${cacheIcon}</span>
+                    <span class="meta-icon" 
+                        title="${isCached ? 'Click để tải lại Cache từ Drive' : 'Chưa Cache'}" 
+                        style="${isCached ? 'cursor: pointer;' : ''}"
+                        onclick="${isCached ? `refreshServerCache(event, '${song.id}')` : ''}">
+                        ${cacheIcon}
+                    </span>
                     <span>${formatTime(song.duration)}</span>
                     <div class="mini-progress-track">
                         <div class="mini-progress-fill" style="width: ${progressPercent}%"></div>
@@ -946,6 +951,50 @@ function seekRelative(seconds) {
         const currTimeLabel = document.getElementById('currTime');
         if (seekBar) seekBar.value = newTime;
         if (currTimeLabel) currTimeLabel.innerText = formatTime(newTime);
+    }
+}
+
+// [MỚI] Hàm xử lý khi bấm vào icon Cache (💾)
+async function refreshServerCache(event, songId) {
+    event.stopPropagation(); // Ngăn không cho phát nhạc khi bấm vào icon
+    
+    if (!confirm('Bạn có chắc muốn xóa bản cache cũ trên Server và tải lại bản mới từ Drive không?')) return;
+
+    const iconSpan = event.target;
+    const originalText = iconSpan.innerText;
+    
+    // Hiệu ứng đang xử lý
+    iconSpan.innerText = '⏳';
+    iconSpan.style.cursor = 'wait';
+
+    try {
+        const res = await fetch('/api/cache/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ songId })
+        });
+        
+        const data = await res.json();
+
+        if (res.ok) {
+            showStatus("✅ Đã xóa cache cũ. Server đang tải lại...", 3000);
+            // Tạm thời đổi thành icon chưa cache để user biết nó đang tải lại
+            iconSpan.innerText = '🚫';
+            iconSpan.title = 'Đang tải lại...';
+            
+            // Sau 5 giây check lại xem tải xong chưa (Optional)
+            setTimeout(() => {
+                // Gọi lại API cache-list để update UI nếu cần, hoặc để tự nhiên
+            }, 5000);
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (e) {
+        console.error(e);
+        showStatus("❌ Lỗi: " + e.message, 3000);
+        iconSpan.innerText = originalText; // Trả lại icon cũ nếu lỗi
+    } finally {
+        iconSpan.style.cursor = 'pointer';
     }
 }
 

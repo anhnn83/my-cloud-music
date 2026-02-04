@@ -321,6 +321,31 @@ fastify.get('/api/cache-list', async (request, reply) => {
     }
 });
 
+// [MỚI] API Buộc làm mới Cache (Xóa file cũ -> Tải lại từ Drive)
+fastify.post('/api/cache/refresh', async (request, reply) => {
+    const { songId } = request.body;
+    if (!songId) return reply.code(400).send({ error: 'Thiếu Song ID' });
+
+    const filePath = path.join(CACHE_ROOT, `${songId}.mp3`);
+
+    try {
+        // 1. Xóa file cũ nếu tồn tại
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ [Force Refresh] Đã xóa cache cũ: ${songId}`);
+        }
+
+        // 2. Kích hoạt tải lại (Preload)
+        // Lưu ý: Hàm này chạy ngầm, không đợi tải xong mới trả response để tránh timeout
+        preloadSong(songId); 
+
+        return { status: 'success', message: 'Đã xóa cache cũ và đang tải lại bản mới.' };
+    } catch (err) {
+        console.error("Lỗi refresh cache:", err);
+        return reply.code(500).send({ error: 'Không thể xóa file cache.' });
+    }
+});
+
 // 4. Stream nhạc (Manual Stream)
 fastify.get('/stream/:id', async (request, reply) => {
     try {
