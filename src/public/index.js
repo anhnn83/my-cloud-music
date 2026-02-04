@@ -233,29 +233,92 @@ function prepareNextSong() {
 }
 
 // --- 3. CORE: LOAD & PLAY SONG (OFFLINE UPGRADE) ---
+// async function loadSong(song, autoPlay = true) {
+//     updatePlayerUI(song);
+//     updateMediaSession(song);
+//     isPreloaded = false;
+//     prepareNextSong();
+
+//     audio.pause();
+//     audio.onloadedmetadata = null;
+//     audio.onerror = null;
+
+//     // [OFFLINE UPDATE] Kiểm tra xem bài hát có trong IndexedDB không
+//     let isPlayingOffline = false;
+//     if (typeof OfflineDB !== 'undefined') {
+//         const offlineBlob = await OfflineDB.getSong(song.id);
+//         if (offlineBlob) {
+//             console.log("📂 Playing from Offline DB:", song.name);
+//             const url = URL.createObjectURL(offlineBlob);
+//             audio.src = url;
+//             isPlayingOffline = true;
+//         }
+//     }
+
+//     // Nếu không có offline, stream từ server như bình thường
+//     if (!isPlayingOffline) {
+//         console.log("☁️ Playing from Server:", song.name);
+//         audio.src = `/stream/${song.id}?t=${Date.now()}`;
+//     }
+
+//     // Áp dụng lại tốc độ phát
+//     audio.playbackRate = currentSpeed;
+
+//     audio.onloadedmetadata = () => {
+//         const cbStart = document.getElementById('cbPlayFromStart').checked;
+//         const cbSkip = document.getElementById('cbSkipMode').checked;
+//         const skipStartVal = parseInt(document.getElementById('inpSkipStart').value) || 0;
+
+//         let startTime = 0;
+//         if (!cbStart && song.current_time && song.current_time > 5 && song.current_time < song.duration - 5) {
+//             startTime = song.current_time;
+//         }
+
+//         if (cbSkip) {
+//             if (startTime < skipStartVal) startTime = skipStartVal;
+//         }
+
+//         audio.currentTime = startTime;
+        
+//         if(autoPlay) {
+//             var playPromise = audio.play();
+//             if (playPromise !== undefined) {
+//                 playPromise
+//                     .then(() => updatePlayBtn(true))
+//                     .catch(e => {
+//                         console.warn("Autoplay blocked:", e);
+//                         updatePlayBtn(false);
+//                     });
+//             }
+//         }
+//     };
+
+//     audio.onerror = (e) => {
+//         console.error("Lỗi phát bài hát:", song.name, audio.error);
+//         updatePlayBtn(false);
+//     };
+    
+//     audio.load();
+// }
+
+// src/public/index.js
+
 async function loadSong(song, autoPlay = true) {
     updatePlayerUI(song);
     updateMediaSession(song);
     isPreloaded = false;
     prepareNextSong();
 
-    audio.pause();
+    // [FIX iOS PWA] XÓA DÒNG NÀY: audio.pause(); 
+    // Việc gán src mới sẽ tự động dừng bài cũ mà không ngắt hẳn Audio Context
+    
     audio.onloadedmetadata = null;
     audio.onerror = null;
 
+    // ... (Giữ nguyên logic kiểm tra OfflineDB và gán audio.src) ...
     // [OFFLINE UPDATE] Kiểm tra xem bài hát có trong IndexedDB không
     let isPlayingOffline = false;
-    if (typeof OfflineDB !== 'undefined') {
-        const offlineBlob = await OfflineDB.getSong(song.id);
-        if (offlineBlob) {
-            console.log("📂 Playing from Offline DB:", song.name);
-            const url = URL.createObjectURL(offlineBlob);
-            audio.src = url;
-            isPlayingOffline = true;
-        }
-    }
-
-    // Nếu không có offline, stream từ server như bình thường
+    // ... code cũ của bạn ...
     if (!isPlayingOffline) {
         console.log("☁️ Playing from Server:", song.name);
         audio.src = `/stream/${song.id}?t=${Date.now()}`;
@@ -264,7 +327,13 @@ async function loadSong(song, autoPlay = true) {
     // Áp dụng lại tốc độ phát
     audio.playbackRate = currentSpeed;
 
-    audio.onloadedmetadata = () => {
+    // [FIX iOS PWA] Thay đổi cách xử lý sự kiện play
+    // Thay vì dùng audio.onloadedmetadata, ta dùng listener để chắc chắn hơn
+    const playHandler = () => {
+        // Gỡ bỏ listener để không bị lặp
+        audio.removeEventListener('loadedmetadata', playHandler);
+
+        // ... (Logic skip start/end giữ nguyên) ...
         const cbStart = document.getElementById('cbPlayFromStart').checked;
         const cbSkip = document.getElementById('cbSkipMode').checked;
         const skipStartVal = parseInt(document.getElementById('inpSkipStart').value) || 0;
@@ -273,32 +342,34 @@ async function loadSong(song, autoPlay = true) {
         if (!cbStart && song.current_time && song.current_time > 5 && song.current_time < song.duration - 5) {
             startTime = song.current_time;
         }
-
-        if (cbSkip) {
-            if (startTime < skipStartVal) startTime = skipStartVal;
-        }
+        if (cbSkip && startTime < skipStartVal) startTime = skipStartVal;
 
         audio.currentTime = startTime;
         
         if(autoPlay) {
-            var playPromise = audio.play();
+            // Dùng Promise để bắt lỗi trên iOS
+            const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise
-                    .then(() => updatePlayBtn(true))
+                    .then(() => {
+                        updatePlayBtn(true);
+                        // [FIX] Cập nhật lại MediaSession ngay khi bắt đầu phát
+                        updateMediaSession(song); 
+                    })
                     .catch(e => {
-                        console.warn("Autoplay blocked:", e);
+                        console.warn("Autoplay blocked or Interrupted:", e);
                         updatePlayBtn(false);
+                        // Nếu bị chặn, thử play lại sau 100ms (Hy vọng mong manh)
+                        // setTimeout(() => audio.play(), 100); 
                     });
             }
         }
     };
 
-    audio.onerror = (e) => {
-        console.error("Lỗi phát bài hát:", song.name, audio.error);
-        updatePlayBtn(false);
-    };
+    audio.addEventListener('loadedmetadata', playHandler);
     
-    audio.load();
+    // Bỏ dòng audio.load() nếu không cần thiết, việc gán src đã kích hoạt load
+    // audio.load(); 
 }
 
 // --- 4. SỰ KIỆN AUDIO ---
