@@ -883,6 +883,88 @@ audio.addEventListener('error', (e) => {
     }
 });
 
+// function updateMediaSession(song) {
+//     if ('mediaSession' in navigator) {
+//         navigator.mediaSession.metadata = new MediaMetadata({
+//             title: song.name,
+//             artist: "My Cloud Music",
+//             album: song.folder_path || "Unknown Album",
+//             artwork: [
+//                 { src: '/icon.png', sizes: '96x96', type: 'image/png' },
+//                 { src: '/icon.png', sizes: '128x128', type: 'image/png' },
+//                 { src: '/icon.png', sizes: '192x192', type: 'image/png' },
+//                 { src: '/icon.png', sizes: '512x512', type: 'image/png' },
+//             ]
+//         });
+
+//         // [FIX RESUME BUG] Cập nhật handler cho nút Play/Pause
+//         const actionHandlers = [
+//             ['play', () => {
+//                 // Bước 1: Thử phát bình thường
+//                 const playPromise = audio.play();
+
+//                 if (playPromise !== undefined) {
+//                     playPromise.then(() => {
+//                         // [QUAN TRỌNG] Hack cho iOS PWA:
+//                         // Khi resume từ background, buffer có thể bị lệch. 
+//                         // Việc gán lại currentTime = chính nó sẽ buộc iOS Audio Engine đồng bộ lại dữ liệu.
+//                         if (audio.duration && !isNaN(audio.duration)) {
+//                             audio.currentTime = audio.currentTime; 
+//                         }
+                        
+//                         updatePlayBtn(true);
+//                         navigator.mediaSession.playbackState = "playing";
+//                     })
+//                     .catch((e) => {
+//                         console.warn("Background resume failed, reloading stream...", e);
+                        
+//                         // Bước 2: Fallback (Nếu socket đã bị iOS ngắt hoàn toàn)
+//                         // Lưu lại vị trí hiện tại -> Load lại stream -> Tua tới vị trí cũ -> Phát
+//                         const savedTime = audio.currentTime;
+//                         audio.load(); // Tái tạo kết nối mạng
+                        
+//                         // Đợi 1 chút để load event kích hoạt (dùng one-shot listener)
+//                         const onCanPlayOnce = () => {
+//                             audio.currentTime = savedTime;
+//                             audio.play().then(() => {
+//                                 updatePlayBtn(true);
+//                                 navigator.mediaSession.playbackState = "playing";
+//                             }).catch(() => {});
+//                             audio.removeEventListener('canplay', onCanPlayOnce);
+//                         };
+                        
+//                         audio.addEventListener('canplay', onCanPlayOnce);
+//                     });
+//                 }
+//             }],
+//             ['pause', () => {
+//                 audio.pause();
+//                 updatePlayBtn(false);
+//                 navigator.mediaSession.playbackState = "paused";
+//             }],
+//             ['previoustrack', () => playPrev()],
+//             ['nexttrack',     () => playNext(true)],
+//             ['seekbackward',  (details) => { 
+//                 audio.currentTime = Math.max(audio.currentTime - (details.seekOffset || 10), 0); 
+//                 updatePositionState();
+//             }],
+//             ['seekforward',   (details) => { 
+//                 audio.currentTime = Math.min(audio.currentTime + (details.seekOffset || 10), audio.duration); 
+//                 updatePositionState();
+//             }],
+//             ['seekto',        (details) => { 
+//                 if (details.fastSeek && 'fastSeek' in audio) audio.fastSeek(details.seekTime);
+//                 else audio.currentTime = details.seekTime; 
+//                 updatePositionState();
+//             }],
+//         ];
+
+//         for (const [action, handler] of actionHandlers) {
+//             try { navigator.mediaSession.setActionHandler(action, handler); } catch (error) {}
+//         }
+//     }
+// }
+
 function updateMediaSession(song) {
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -897,45 +979,34 @@ function updateMediaSession(song) {
             ]
         });
 
-        // [FIX RESUME BUG] Cập nhật handler cho nút Play/Pause
         const actionHandlers = [
             ['play', () => {
-                // Bước 1: Thử phát bình thường
-                const playPromise = audio.play();
-
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        // [QUAN TRỌNG] Hack cho iOS PWA:
-                        // Khi resume từ background, buffer có thể bị lệch. 
-                        // Việc gán lại currentTime = chính nó sẽ buộc iOS Audio Engine đồng bộ lại dữ liệu.
-                        if (audio.duration && !isNaN(audio.duration)) {
-                            audio.currentTime = audio.currentTime; 
-                        }
+                // --- GIẢI PHÁP: KICKSTART DECODER ---
+                // Thay vì reload src (gây đơ), ta buộc iOS đồng bộ lại decoder bằng cách tua nhẹ.
+                
+                audio.play()
+                    .then(() => {
+                        // Kiểm tra nếu đang ở iOS (cơ chế bảo vệ)
+                        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                         
+                        if (isIOS && audio.duration) {
+                            // "Cú lắc": Tua lùi 0.1 giây
+                            // Hành động này buộc iOS phải buffer lại dữ liệu tại điểm mới
+                            const safeTime = Math.max(0, audio.currentTime - 0.1);
+                            audio.currentTime = safeTime;
+                        }
+
                         updatePlayBtn(true);
                         navigator.mediaSession.playbackState = "playing";
                     })
                     .catch((e) => {
-                        console.warn("Background resume failed, reloading stream...", e);
-                        
-                        // Bước 2: Fallback (Nếu socket đã bị iOS ngắt hoàn toàn)
-                        // Lưu lại vị trí hiện tại -> Load lại stream -> Tua tới vị trí cũ -> Phát
-                        const savedTime = audio.currentTime;
-                        audio.load(); // Tái tạo kết nối mạng
-                        
-                        // Đợi 1 chút để load event kích hoạt (dùng one-shot listener)
-                        const onCanPlayOnce = () => {
-                            audio.currentTime = savedTime;
-                            audio.play().then(() => {
-                                updatePlayBtn(true);
-                                navigator.mediaSession.playbackState = "playing";
-                            }).catch(() => {});
-                            audio.removeEventListener('canplay', onCanPlayOnce);
-                        };
-                        
-                        audio.addEventListener('canplay', onCanPlayOnce);
+                        console.warn("Resume failed, trying hard reload...", e);
+                        // Chỉ reload khi thực sự lỗi (Socket đã chết hẳn)
+                        const t = audio.currentTime;
+                        audio.load();
+                        audio.currentTime = t;
+                        audio.play();
                     });
-                }
             }],
             ['pause', () => {
                 audio.pause();
