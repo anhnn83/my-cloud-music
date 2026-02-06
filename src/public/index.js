@@ -716,6 +716,7 @@ async function filterPlaylist() {
     const rawF = document.getElementById('folderFilter').value;
     const f = rawF ? rawF.trim() : 'all';
 
+    // Reset thanh tìm kiếm khi đổi thư mục
     document.getElementById('searchInput').value = '';
 
     try {
@@ -725,17 +726,15 @@ async function filterPlaylist() {
             currentPlaylist = allSongs.filter(s => s.is_favorite === 1);
         } else if (f === 'top100') {
             const res = await fetch('/api/songs/top100');
+            if (!res.ok) throw new Error("Lỗi tải Top 100");
             currentPlaylist = await res.json();
         } else if (f === 'recent') {
             const res = await fetch('/api/songs/recent');
+            if (!res.ok) throw new Error("Lỗi tải bài mới");
             currentPlaylist = await res.json();
         } else if (f === 'offline_only') {
-            // [OFFLINE UPDATE] Lọc bài đã tải
             if (typeof OfflineDB !== 'undefined') {
                 const offlineList = [];
-                // Check async từng bài hơi chậm, nhưng an toàn
-                // Cách tối ưu: lấy tất cả key trong DB so sánh
-                // Ở đây dùng cách lặp qua allSongs và check (hiệu năng ổn với < 1000 bài)
                 for (const song of allSongs) {
                     if (await OfflineDB.isDownloaded(song.id)) {
                         offlineList.push(song);
@@ -746,12 +745,18 @@ async function filterPlaylist() {
                 currentPlaylist = [];
             }
         } else {
-            currentPlaylist = allSongs.filter(s => (s.folder_path || '').trim() === f);
+            // [FIX BUG QUAN TRỌNG TẠI ĐÂY]
+            // Logic cũ: (s.folder_path || '').trim() === f 
+            // -> Lỗi vì menu dùng 'Root' nhưng ở đây lại so với ''
+            
+            // Logic mới: Đồng bộ 'Root' giống hệt lúc tạo dropdown option
+            currentPlaylist = allSongs.filter(s => (s.folder_path || 'Root').trim() === f);
         }
     } catch (e) {
         console.error("Filter Error:", e);
-        // Nếu lỗi mạng khi lọc (Top 100/Recent) -> Fallback về rỗng
+        // Nếu lỗi (ví dụ mất mạng khi bấm Top 100), giữ danh sách rỗng hoặc báo lỗi
         currentPlaylist = [];
+        if (typeof showStatus === 'function') showStatus("❌ Lỗi tải danh sách bài hát!", 2000);
     }
     
     finishFilter();
