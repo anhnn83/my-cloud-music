@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.2
-console.log("--- src/public/index.js - Version 4.2 ---");
+// src/public/index.js - Version 4.3
+console.log("--- src/public/index.js - Version 4.3 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -50,25 +50,62 @@ async function init(isSilent = false) {
         allSongs = data.data; 
         document.getElementById('count').innerText = data.total;
 
-        // 2. Tạo Menu lọc (Dropdown)
+        // --- 2. Tạo Menu lọc (Dropdown) [CẬP NHẬT HIỂN THỊ SỐ LƯỢNG] ---
         const currentFilterVal = document.getElementById('folderFilter').value;
-        // Gom nhóm folder
-        const folders = [...new Set(allSongs.map(s => (s.folder_path || 'Root').trim()))];
-        
         const select = document.getElementById('folderFilter');
         select.innerHTML = ''; 
 
-        const optAll = document.createElement('option'); optAll.value = 'all'; optAll.innerText = '📁 Tất cả thư mục'; select.appendChild(optAll);
-        const optFav = document.createElement('option'); optFav.value = 'favorites'; optFav.innerText = '❤️ Bài hát yêu thích'; select.appendChild(optFav);
-        const optTop = document.createElement('option'); optTop.value = 'top100'; optTop.innerText = '🔥 Top 100 Thường nghe'; select.appendChild(optTop);
-        const optRecent = document.createElement('option'); optRecent.value = 'recent'; optRecent.innerText = '🆕 Top 100 Mới tải'; select.appendChild(optRecent);
+        // BƯỚC A: Tính toán số lượng bài hát trong từng thư mục
+        const folderCounts = {};
+        allSongs.forEach(s => {
+            const fName = (s.folder_path || 'Root').trim();
+            folderCounts[fName] = (folderCounts[fName] || 0) + 1;
+        });
         
-        // [OFFLINE UPDATE] Thêm bộ lọc bài đã tải
-        const optOffline = document.createElement('option'); optOffline.value = 'offline_only'; optOffline.innerText = '⬇️ Nhạc đã tải'; select.appendChild(optOffline);
+        // Lấy danh sách folder và sắp xếp A-Z
+        const folders = Object.keys(folderCounts).sort();
 
-        folders.sort().forEach(f => {
+        // Tính số lượng bài yêu thích
+        const favCount = allSongs.filter(s => s.is_favorite).length;
+
+        // BƯỚC B: Tạo các Option cố định (kèm số lượng nếu có thể tính nhanh)
+        const optAll = document.createElement('option'); 
+        optAll.value = 'all'; 
+        optAll.innerText = `📁 Tất cả thư mục (${allSongs.length})`; 
+        select.appendChild(optAll);
+
+        const optFav = document.createElement('option'); 
+        optFav.value = 'favorites'; 
+        optFav.innerText = `❤️ Bài hát yêu thích (${favCount})`; 
+        select.appendChild(optFav);
+
+        const optTop = document.createElement('option'); 
+        optTop.value = 'top100'; 
+        optTop.innerText = '🔥 Top 100 Thường nghe'; 
+        select.appendChild(optTop);
+
+        const optRecent = document.createElement('option'); 
+        optRecent.value = 'recent'; 
+        optRecent.innerText = '🆕 Top 100 Mới tải'; 
+        select.appendChild(optRecent);
+        
+        const optOffline = document.createElement('option'); 
+        optOffline.value = 'offline_only'; 
+        optOffline.innerText = '⬇️ Nhạc đã tải'; 
+        select.appendChild(optOffline);
+
+        // BƯỚC C: Tạo Option cho từng thư mục với số lượng
+        folders.forEach(f => {
             const opt = document.createElement('option');
-            opt.value = f; opt.innerText = f.replace('/', '📁 '); select.appendChild(opt);
+            opt.value = f; // Giá trị value giữ nguyên để lọc đúng
+            
+            // Format hiển thị: thay dấu / bằng dấu mũi tên cho đẹp
+            const displayName = f.replace(/\//g, ' › ');
+            
+            // Hiển thị: 📁 Tên Folder (Số lượng)
+            opt.innerText = `📁 ${displayName} (${folderCounts[f]})`; 
+            
+            select.appendChild(opt);
         });
 
         // Khôi phục lại lựa chọn cũ
