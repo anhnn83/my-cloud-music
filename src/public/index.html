@@ -217,7 +217,10 @@
 
         <div class="player-header">
             <div class="now-playing" id="songTitle">Chưa chọn bài hát</div>
-            <button id="playerHeart" class="btn-heart btn-heart-player" onclick="toggleFavoriteCurrent()">🤍</button>
+            <div class="player-actions">
+                <button id="playerHeart" class="btn-heart-player" onclick="toggleFavoriteCurrent()">🤍</button>
+                <button id="playerDownload" class="btn-heart-player" onclick="toggleDownloadCurrent()" title="Tải Offline">⬇️</button>
+            </div>
         </div>
         <div class="progress-container">
             <span id="currTime">0:00</span>

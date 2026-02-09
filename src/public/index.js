@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.3
-console.log("--- src/public/index.js - Version 4.3 ---");
+// src/public/index.js - Version 4.4
+console.log("--- src/public/index.js - Version 4.4 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -537,6 +537,22 @@ function updatePlayerUI(song) {
         el.classList.add('active'); 
         el.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
     }
+    // [MỚI] Check trạng thái Download của bài hiện tại để update nút trên Player
+    const btnPlayer = document.getElementById('playerDownload');
+    if (btnPlayer) {
+        // Reset về mặc định trước khi check
+        btnPlayer.innerText = '⬇️'; 
+        btnPlayer.style.color = 'inherit';
+        
+        if (typeof OfflineDB !== 'undefined') {
+            OfflineDB.isDownloaded(song.id).then(isDL => {
+                if (isDL) {
+                    btnPlayer.innerText = '✅';
+                    btnPlayer.style.color = '#1db954';
+                }
+            });
+        }
+    }
 }
 
 function updatePlayBtn(p) { 
@@ -619,13 +635,28 @@ function seekAudio() {
     document.getElementById('currTime').innerText = formatTime(audio.currentTime); 
 }
 
+// [MỚI] Hàm xử lý khi bấm nút Download trên Player
+function toggleDownloadCurrent() {
+    if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
+        const song = currentPlaylist[currentIndex];
+        // Gọi lại hàm toggleDownload cũ nhưng truyền dummy event
+        toggleDownload({ stopPropagation: () => {} }, song.id);
+    }
+}
+
 // --- 7. FAVORITE & DOWNLOAD & SEARCH ---
 
 // [OFFLINE UPDATE] Hàm xử lý Download
+// [CẬP NHẬT] Hàm toggleDownload để đồng bộ cả 2 nút
 async function toggleDownload(event, songId) {
-    event.stopPropagation(); // Không trigger play
-    const btn = document.getElementById(`btn-dl-${songId}`);
-    
+    if(event && event.stopPropagation) event.stopPropagation(); 
+
+    // 1. Nút trong danh sách playlist
+    const btnList = document.getElementById(`btn-dl-${songId}`);
+    // 2. Nút trên player (nếu đang phát bài này)
+    const btnPlayer = document.getElementById('playerDownload');
+    const isPlayingCurrent = (currentIndex !== -1 && currentPlaylist[currentIndex]?.id === songId);
+
     if (typeof OfflineDB === 'undefined') {
         alert("Trình duyệt không hỗ trợ lưu Offline!");
         return;
@@ -633,47 +664,64 @@ async function toggleDownload(event, songId) {
 
     const isDownloaded = await OfflineDB.isDownloaded(songId);
 
+    // Helper: Cập nhật UI cho cả 2 nút cùng lúc
+    const updateUI = (state, textList, textPlayer, title) => {
+        // Update List Button
+        if (btnList) {
+            btnList.innerText = textList;
+            btnList.title = title;
+            if (state === 'done') btnList.classList.add('downloaded');
+            else btnList.classList.remove('downloaded');
+            if (state === 'loading') btnList.disabled = true;
+            else btnList.disabled = false;
+        }
+        
+        // Update Player Button (chỉ khi đang phát bài này)
+        if (isPlayingCurrent && btnPlayer) {
+            btnPlayer.innerText = textPlayer; // Icon cho player
+            if (state === 'done') {
+                btnPlayer.innerText = '✅';
+                btnPlayer.style.color = '#1db954'; // Màu xanh
+            } else if (state === 'loading') {
+                btnPlayer.innerText = '⏳';
+            } else {
+                btnPlayer.innerText = '⬇️';
+                btnPlayer.style.color = 'inherit'; // Màu trắng/mặc định
+            }
+        }
+    };
+
     if (isDownloaded) {
         // --- XÓA ---
         if (!confirm('Xóa bài hát này khỏi bộ nhớ máy?')) return;
         await OfflineDB.deleteSong(songId);
-        btn.innerText = '⬇️'; // Đổi lại icon tải
-        btn.classList.remove('downloaded');
-        btn.title = 'Tải Offline';
+        
+        updateUI('normal', '⬇️', '⬇️', 'Tải Offline');
         showStatus("🗑️ Đã xóa bản Offline", 2000);
         
-        // Nếu đang ở bộ lọc "offline_only", xóa xong thì refresh list
         if(document.getElementById('folderFilter').value === 'offline_only') {
             filterPlaylist();
         }
     } else {
         // --- TẢI ---
         try {
-            btn.innerText = '⏳'; // Icon chờ
-            btn.disabled = true;
+            updateUI('loading', '⏳', '⏳', 'Đang tải...');
             
-            // Gọi API Stream để lấy Blob
             const res = await fetch(`/stream/${songId}`);
             if (!res.ok) throw new Error("Lỗi tải file");
             const blob = await res.blob();
             
-            // Lưu vào IndexedDB
             await OfflineDB.saveSong(songId, blob);
             
-            btn.innerText = '✅';
-            btn.classList.add('downloaded');
-            btn.disabled = false;
-            btn.title = 'Đã tải (Nhấn để xóa)';
+            updateUI('done', '✅', '✅', 'Đã tải (Nhấn để xóa)');
             showStatus("💾 Đã tải xong! Có thể nghe Offline.", 2000);
         } catch (e) {
             console.error(e);
-            btn.innerText = '⚠️';
-            btn.disabled = false;
+            updateUI('error', '⚠️', '⬇️', 'Lỗi tải');
             if (e.name === 'QuotaExceededError') {
-                alert("Bộ nhớ trình duyệt đã đầy! Hãy xóa bớt nhạc.");
+                alert("Bộ nhớ trình duyệt đã đầy!");
             } else {
                 showStatus("❌ Lỗi tải xuống", 3000);
-                btn.innerText = '⬇️';
             }
         }
     }

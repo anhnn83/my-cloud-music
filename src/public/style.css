@@ -150,9 +150,66 @@ select option { background-color: #333; color: white; }
 /* =========================================
    5. CONTROLS & PROGRESS
    ========================================= */
-.player-header { display: flex; align-items: center; width: 100%; max-width: 600px; justify-content: space-between; margin-bottom: 10px; }
-.now-playing { font-size: 1rem; color: var(--light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; text-align: center; font-weight: 500; }
-.btn-heart-player { font-size: 1.6rem; margin-left: 15px; }
+.player-header { 
+    display: flex; 
+    align-items: center; 
+    width: 100%; 
+    max-width: 600px; 
+    justify-content: space-between; 
+    margin-bottom: 10px;
+    gap: 10px; /* Tạo khoảng cách an toàn giữa tên bài và các nút */
+}
+
+/* Tên bài hát: Giữ nguyên logic cũ nhưng đảm bảo không đè lên nút */
+.now-playing { 
+    font-size: 1rem; 
+    color: var(--light); 
+    /* Các thuộc tính overflow/marquee được xử lý ở cuối file, ở đây chỉ chỉnh layout */
+    flex: 1; /* Chiếm hết không gian còn lại */
+    text-align: left; /* Canh trái để marquee chạy đẹp hơn */
+    min-width: 0; /* Fix lỗi flexbox không co lại khi tên quá dài */
+}
+
+/* [MỚI] Container chứa nút Tim và Download để chúng nằm cạnh nhau */
+.player-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px; /* Khoảng cách giữa nút Tim và nút Download */
+    flex-shrink: 0; /* Đảm bảo cụm nút này không bao giờ bị bóp méo */
+}
+
+/* [CẬP NHẬT] Style chung cho nút Tim và Download trên Player */
+.btn-heart-player {
+    background: transparent;
+    border: none;
+    font-size: 1.4rem; /* Kích thước icon */
+    color: #b3b3b3;
+    cursor: pointer;
+    padding: 0;
+    margin: 0; /* Bỏ margin cũ */
+    
+    /* Tạo vùng bấm hình tròn chuẩn đẹp */
+    width: 40px; 
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.btn-heart-player:hover {
+    background-color: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+.btn-heart-player:active {
+    transform: scale(0.9);
+}
+
+.btn-heart-player.liked {
+    color: var(--primary); /* Xanh Spotify, hoặc đổi thành var(--red) nếu thích màu đỏ */
+}
 
 .progress-container { width: 100%; max-width: 600px; display: flex; align-items: center; gap: 12px; font-size: 0.85em; color: var(--gray); margin-bottom: 12px; }
 input[type=range] { flex: 1; height: 6px; background: #555; border-radius: 3px; -webkit-appearance: none; cursor: pointer; }
