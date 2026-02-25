@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.4
-console.log("--- src/public/index.js - Version 4.4 ---");
+// src/public/index.js - Version 4.5
+console.log("--- src/public/index.js - Version 4.5 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -727,6 +727,133 @@ async function toggleDownload(event, songId) {
     }
 }
 
+// [MỚI] Hàm xử lý tải toàn bộ danh sách hiện hành về Offline (Có Progress Bar + Wake Lock)
+async function downloadAllInCurrentPlaylist() {
+    const btn = document.getElementById('btnDownloadAllOffline');
+    const progressContainer = document.getElementById('dlProgressContainer');
+    const progressBar = document.getElementById('dlProgressBar');
+    const progressText = document.getElementById('dlProgressText');
+
+    if (!btn) return;
+
+    if (typeof OfflineDB === 'undefined') {
+        alert("Trình duyệt không hỗ trợ lưu Offline!");
+        return;
+    }
+
+    const totalSongs = currentPlaylist.length;
+    if (!confirm(`Bạn có muốn tải ${totalSongs} bài hát về máy để nghe Offline không? (Sẽ bỏ qua các bài đã tải)`)) {
+        return;
+    }
+
+    // 1. Cài đặt UI khi bắt đầu
+    btn.disabled = true;
+    btn.innerText = '⏳ Đang tải... Vui lòng không đóng tab'; // Đổi text vì đã có Wake Lock lo việc giữ sáng màn hình
+    btn.style.background = '#f39c12'; // Màu cam
+    
+    // Hiện thanh tiến độ
+    if (progressContainer) progressContainer.style.display = 'block';
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressText) progressText.innerText = `0 / ${totalSongs} (0%)`;
+
+    let successCount = 0;
+    let skipCount = 0;
+    let errorCount = 0;
+    let processedCount = 0;
+
+    // Hàm phụ trợ cập nhật UI thanh tiến độ
+    const updateProgressUI = () => {
+        processedCount++;
+        const percent = Math.round((processedCount / totalSongs) * 100);
+        if (progressBar) progressBar.style.width = `${percent}%`;
+        if (progressText) progressText.innerText = `${processedCount} / ${totalSongs} (${percent}%)`;
+    };
+
+    // --- [TÍNH NĂNG MỚI] BẬT CHỐNG TẮT MÀN HÌNH (WAKE LOCK) ---
+    let wakeLock = null;
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('💡 Wake Lock kích hoạt: Màn hình sẽ được giữ sáng.');
+        }
+    } catch (err) {
+        console.warn('⚠️ Wake Lock bị từ chối/không hỗ trợ:', err.message);
+    }
+    // --------------------------------------------------------
+
+    // 2. Chạy vòng lặp tải nhạc
+    for (const song of currentPlaylist) {
+        const isDownloaded = await OfflineDB.isDownloaded(song.id);
+        const btnList = document.getElementById(`btn-dl-${song.id}`);
+
+        if (isDownloaded) {
+            skipCount++;
+            updateProgressUI(); 
+            continue; 
+        }
+
+        try {
+            if (btnList) {
+                btnList.innerText = '⏳';
+                btnList.disabled = true;
+            }
+
+            const res = await fetch(`/stream/${song.id}`);
+            if (!res.ok) throw new Error("Lỗi tải file");
+            const blob = await res.blob();
+            
+            await OfflineDB.saveSong(song.id, blob);
+            
+            if (btnList) {
+                btnList.innerText = '✅';
+                btnList.classList.add('downloaded');
+                btnList.disabled = false;
+                btnList.title = 'Đã tải (Nhấn để xóa)';
+            }
+            successCount++;
+        } catch (e) {
+            console.error(`Lỗi tải bài [${song.name}]:`, e);
+            errorCount++;
+            if (btnList) {
+                btnList.innerText = '⚠️';
+                btnList.disabled = false;
+            }
+            if (e.name === 'QuotaExceededError') {
+                alert("Bộ nhớ trình duyệt đã đầy! Đang dừng tiến trình tải.");
+                break; // Vẫn sẽ thoát vòng lặp nhưng vẫn chạy tới bước tắt Wake Lock ở dưới
+            }
+        }
+        
+        updateProgressUI();
+    }
+
+    // --- [TÍNH NĂNG MỚI] TẮT CHỐNG TẮT MÀN HÌNH (WAKE LOCK) TRẢ LẠI TRẠNG THÁI BÌNH THƯỜNG ---
+    if (wakeLock !== null) {
+        try {
+            await wakeLock.release();
+            wakeLock = null;
+            console.log('💡 Wake Lock đã tắt: Màn hình có thể tự khóa bình thường.');
+        } catch (err) {
+            console.warn('⚠️ Lỗi khi tắt Wake Lock:', err.message);
+        }
+    }
+    // -----------------------------------------------------------------------------------
+
+    // 3. Tổng hợp kết quả khi kết thúc
+    let msg = `Hoàn tất: Tải mới ${successCount} bài.`;
+    if (skipCount > 0) msg += ` Bỏ qua ${skipCount} bài.`;
+    if (errorCount > 0) msg += ` Lỗi ${errorCount} bài.`;
+
+    // Cập nhật giao diện lần cuối
+    btn.innerText = '✅ Đã tải xong danh sách';
+    btn.style.background = '#1db954'; // Xanh lá
+    btn.disabled = false;
+    
+    if (progressText) progressText.innerText = "Hoàn tất 100%!";
+    
+    showStatus(msg, 5000);
+}
+
 function toggleFavorite(event, songId) {
     event.stopPropagation();
     let song = currentPlaylist.find(s => s.id === songId);
@@ -929,6 +1056,29 @@ function renderPlaylist() {
             });
         }
     });
+
+    // Hiển thị nút Tải Toàn Bộ ở cuối danh sách (ngoại trừ 'all' và 'offline_only')
+    const currentFilter = document.getElementById('folderFilter').value;
+    if (currentFilter !== 'all' && currentFilter !== 'offline_only' && currentPlaylist.length > 0) {
+        const downloadAllDiv = document.createElement('div');
+        downloadAllDiv.style.textAlign = 'center';
+        downloadAllDiv.style.marginTop = '20px';
+        downloadAllDiv.style.paddingBottom = '30px';
+
+        downloadAllDiv.innerHTML = `
+            <button id="btnDownloadAllOffline" 
+                    onclick="downloadAllInCurrentPlaylist()" 
+                    style="background: #1db954; color: white; border: none; padding: 12px 24px; border-radius: 25px; font-weight: bold; cursor: pointer; width: 90%; max-width: 350px; font-size: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.3s;">
+                ⬇️ Tải Offline toàn bộ danh sách
+            </button>
+            
+            <div id="dlProgressContainer" style="display: none; width: 90%; max-width: 350px; margin: 15px auto 0; background: #333; border-radius: 10px; overflow: hidden; position: relative; height: 22px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">
+                <div id="dlProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #1db954, #1ed760); transition: width 0.3s ease;"></div>
+                <span id="dlProgressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 0.85rem; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); white-space: nowrap;">0 / 0 (0%)</span>
+            </div>
+        `;
+        list.appendChild(downloadAllDiv);
+    }
 }
 
 function toggleDownloaderView() {

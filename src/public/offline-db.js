@@ -1,4 +1,4 @@
-// src/public/offline-db.js
+// src/public/offline-db.js - Version 1.1
 
 const DB_NAME = 'MyMusicDB';
 const DB_VERSION = 1;
@@ -60,8 +60,13 @@ const OfflineDB = {
 
     // 4. Kiểm tra bài hát đã tải chưa (trả về true/false)
     async isDownloaded(songId) {
-        const item = await this.getSong(songId);
-        return !!item;
+        const db = await dbPromise;
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_SONGS, 'readonly');
+            const req = tx.objectStore(STORE_SONGS).count(songId);
+            req.onsuccess = () => resolve(req.result > 0);
+            req.onerror = () => resolve(false);
+        });
     },
 
     // 5. Lưu danh sách bài hát (Metadata) để load khi offline
