@@ -246,7 +246,6 @@
 
     <script>
         // --- LOGIC PIN & AUTH ---
-        // (Giữ nguyên logic PIN của bạn)
         const pinInput = document.getElementById('pinInput');
         const btnUnlock = document.querySelector('.btn-unlock');
 
@@ -257,6 +256,17 @@
             const pin = pinInput.value;
             const errDiv = document.getElementById('loginError');
             if(!pin || pin.length < 6) return;
+
+            // [MỚI] Xử lý trường hợp người dùng đang Offline mà vẫn cố nhập PIN
+            if (!navigator.onLine) {
+                document.getElementById('loginOverlay').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('loginOverlay').style.display = 'none';
+                    if(typeof init === 'function') init();
+                }, 500);
+                return;
+            }
+
             btnUnlock.disabled = true; btnUnlock.innerText = "⏳"; pinInput.disabled = true; errDiv.innerText = "";
 
             try {
@@ -272,10 +282,22 @@
                     errDiv.innerText = data.error || "Mã PIN không đúng";
                     setTimeout(() => { pinInput.value = ""; pinInput.disabled = false; pinInput.focus(); btnUnlock.disabled = false; btnUnlock.innerText = "MỞ KHÓA"; }, 1000);
                 }
-            } catch (e) { errDiv.innerText = "Lỗi kết nối server!"; pinInput.disabled = false; btnUnlock.disabled = false; btnUnlock.innerText = "MỞ KHÓA"; }
+            } catch (e) { 
+                // Fallback: Lỗi fetch do rớt mạng đột ngột lúc đang gửi PIN
+                document.getElementById('loginOverlay').style.display = 'none';
+                if(typeof init === 'function') init(); 
+            }
         }
 
         (async function checkAuth() {
+            // [MỚI] Tự động bỏ qua đăng nhập nếu thiết bị đang tắt mạng (Airplane mode/No Wifi)
+            if (!navigator.onLine) {
+                console.log("Trạng thái mạng: Offline -> Tự động vào chế độ Offline");
+                document.getElementById('loginOverlay').style.display = 'none';
+                if(typeof init === 'function') init();
+                return;
+            }
+
             try {
                 const res = await fetch('/api/auth-status');
                 const data = await res.json();
@@ -283,7 +305,11 @@
                     document.getElementById('loginOverlay').style.display = 'none';
                     if(typeof init === 'function') init();
                 } else { pinInput.focus(); }
-            } catch(e) {}
+            } catch(e) {
+                // Fallback: Mạng vẫn báo Online nhưng Server tắt/không phản hồi
+                document.getElementById('loginOverlay').style.display = 'none';
+                if(typeof init === 'function') init();
+            }
         })();
 
         // [iOS HACK] Mở khóa Audio Context ngay lần chạm đầu tiên
