@@ -25,62 +25,147 @@ body {
 }
 
 /* =========================================
-   2. HEADER & THANH CÔNG CỤ
+   2. HEADER & THANH CÔNG CỤ (UI NÂNG CẤP)
    ========================================= */
 .header {
-    padding: 15px 20px;
     position: sticky; top: 0;
-    background: rgba(18, 18, 18, 0.95);
-    backdrop-filter: blur(10px);
+    width: 100%;
+    padding: 12px 15px;
+    background: rgba(18, 18, 18, 0.85); /* Nền mờ */
+    backdrop-filter: blur(15px);        /* Hiệu ứng kính mờ (Glassmorphism) */
+    -webkit-backdrop-filter: blur(15px);
     z-index: 50;
-    border-bottom: 1px solid #333;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    box-sizing: border-box;
 }
 
-.header h2 {
-    margin: 0 0 15px 0;
-    font-size: 1.3rem; text-align: center;
-    font-weight: 700; letter-spacing: 0.5px;
+.header-inner {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* Khoảng cách giữa Top bar và Thanh tìm kiếm */
 }
 
+/* --- 2.1. Top Bar (3 phần độc lập) --- */
+.top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+}
+
+.top-bar-left, .top-bar-right {
+    flex: 1;
+    display: flex;
+    min-width: 0; /* Chống tràn flexbox */
+}
+.top-bar-left { justify-content: flex-start; }
+.top-bar-right { justify-content: flex-end; }
+
+.top-bar-center {
+    flex: 1.5; /* Ưu tiên không gian cho Tiêu đề ở giữa */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 0;
+}
+
+/* Tiêu đề */
+.app-title {
+    font-size: 1.15rem;
+    margin: 0;
+    font-weight: 700;
+    color: var(--light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+}
+
+/* --- 2.2. Các nút bấm hiện đại --- */
+/* Nút dạng viên thuốc (Pill) chứa icon và dung lượng */
+.btn-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 6px 14px;
+    border-radius: 30px;
+    color: var(--light);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.btn-pill:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.1); }
+.btn-pill:active { transform: scale(0.95); }
+
+.storage-text {
+    color: var(--primary); /* Xanh Spotify */
+    font-family: 'Consolas', monospace;
+    font-weight: bold;
+    letter-spacing: -0.5px;
+}
+
+/* Nút dạng tròn (Circle) */
+.btn-circle {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex; justify-content: center; align-items: center;
+    cursor: pointer; color: white; font-size: 1rem;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.btn-circle:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.1); }
+.btn-circle:active { transform: scale(0.92); }
+
+/* --- 2.3. Thanh công cụ tìm kiếm/lọc --- */
 .controls-top {
-    display: flex; gap: 10px;
+    display: flex; gap: 8px;
     align-items: center; justify-content: space-between;
-    max-width: 800px; margin: 0 auto;
-    background: #222; padding: 5px;
-    border-radius: 30px; border: 1px solid #333;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.03); /* Nền chìm */
+    padding: 5px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    box-sizing: border-box;
 }
 
-.btn-icon-only {
-    background: transparent; border: none;
-    color: var(--light); font-size: 1.2rem;
-    width: 44px; height: 44px;
-    border-radius: 50%; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.2s;
-}
-
-.btn-icon-only:active { background: #444; transform: scale(0.95); }
-.btn-icon-only:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* Hiệu ứng xoay cho nút Scan */
-.spinning {
-    animation: spin 1s linear infinite;
-    pointer-events: none; /* Chặn click */
-    opacity: 0.7;
-}
-@keyframes spin { 100% { transform: rotate(360deg); } }
-
-/* Dropdown & Input */
 select, #searchInput {
     background: transparent; color: white;
     border: none; padding: 0 10px;
-    height: 44px; flex: 1; outline: none;
-    font-size: 1rem; font-weight: 500;
+    height: 36px; flex: 1; outline: none;
+    font-size: 0.95rem; font-weight: 500;
     text-align: center; text-align-last: center;
 }
-select option { background-color: #333; color: white; }
+select option { background-color: #222; color: white; }
 #searchInput { display: none; }
+
+/* Các nút cũ tái sử dụng */
+.btn-icon-only {
+    background: transparent; border: none; color: var(--light); font-size: 1.2rem;
+    width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: 0.2s;
+}
+.btn-icon-only:active { background: rgba(255,255,255,0.1); transform: scale(0.95); }
+
+/* Animation quay cho nút Scan */
+.spinning { animation: spin 1s linear infinite; pointer-events: none; opacity: 0.7; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* Tối ưu điện thoại siêu nhỏ */
+@media (max-width: 400px) {
+    .app-title { font-size: 1.05rem; }
+    .storage-text { font-size: 0.7rem; }
+    .btn-pill { padding: 5px 10px; }
+    .hide-on-mobile { display: none; }
+}
 
 /* =========================================
    3. PLAYLIST

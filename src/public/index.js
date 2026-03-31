@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.8
-console.log("--- src/public/index.js - Version 4.8 ---");
+// src/public/index.js - Version 4.9
+console.log("--- src/public/index.js - Version 4.9 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -415,22 +415,19 @@ audio.ontimeupdate = () => {
         } catch (e) {}
     }
     
-    if (!isPreloaded && pendingNextIndex !== -1 && (audio.currentTime / audio.duration > 0.5)) {
-        isPreloaded = true;
+    if (!isPreloaded && pendingNextIndex !== -1 && (audio.currentTime / audio.duration > 0.7)) {
         const nextSong = currentPlaylist[pendingNextIndex];
-        
         if (!audio.src.startsWith('blob:')) {
              fetch(`/api/preload/${nextSong.id}`).catch(()=>{});
         }
-        
-        // Luôn thử tải ngầm về máy client
-        silentDownloadNext(nextSong.id).catch(() => {
-            isPreloaded = false; // Lỗi thì cho phép thử lại
+        silentDownloadNext(nextSong.id).then(success => {
+            if (success) {
+                isPreloaded = true; 
+            }
         });
     }
 
     if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentIndex !== -1) {
-        // Chỉ lưu progress nếu đang online (API call sẽ fail nếu offline, catch bỏ qua)
         const song = currentPlaylist[currentIndex];
         const currentFolder = document.getElementById('folderFilter').value;
         fetch('/api/progress', { 
@@ -1065,6 +1062,7 @@ function renderPlaylist() {
 function toggleDownloaderView() {
     const playlistView = document.getElementById('playlist');
     const downloaderView = document.getElementById('downloaderView');
+    const icon = document.getElementById('dlViewIcon'); // Chỉ tác động vào icon
     const btn = document.getElementById('btnDownloadView');
 
     const isShowing = downloaderView.style.display === 'block';
@@ -1072,13 +1070,13 @@ function toggleDownloaderView() {
     if (isShowing) {
         downloaderView.style.display = 'none';
         playlistView.style.display = 'block';
-        btn.innerHTML = '⬇️'; 
+        if (icon) icon.innerHTML = '⬇️'; 
         btn.classList.remove('active');
-        init(); 
+        init(true); // Silent init để cập nhật lại danh sách
     } else {
         downloaderView.style.display = 'block';
         playlistView.style.display = 'none';
-        btn.innerHTML = '❌'; 
+        if (icon) icon.innerHTML = '❌'; 
         btn.classList.add('active'); 
         setTimeout(() => document.getElementById('dlLink').focus(), 100);
     }
@@ -1488,7 +1486,7 @@ async function updateStorageUI() {
             const quotaMB = Math.round(estimate.quota / (1024 * 1024));
             
             const infoEl = document.getElementById('storageInfo');
-            if (infoEl) infoEl.innerText = `${usedMB}/${quotaMB}`;
+            if (infoEl) infoEl.innerText = `💻 ${usedMB}/${quotaMB} (MB)`;
             
             return { usedMB, quotaMB };
         } catch(e) {}
@@ -1525,22 +1523,21 @@ async function clearAllTempFiles() {
 
 // 4. Hàm tải đệm (Silent Download - Case A & B)
 async function silentDownloadNext(songId) {
-    if (typeof OfflineDB === 'undefined' || !navigator.onLine) return;
+    if (typeof OfflineDB === 'undefined' || !navigator.onLine) return false; // Trả về false nếu offline
 
     // [FIX LỖI LOGIC] Nếu đã có trong máy (dù là Temp hay Vĩnh viễn) thì KHÔNG tải lại nữa
     const isDownloaded = await OfflineDB.isDownloaded(songId);
-    if (isDownloaded) return;
+    if (isDownloaded) return true; // Trả về true vì kết quả cuối cùng là "Bài hát đã sẵn sàng"
 
     try {
         const storage = await updateStorageUI();
-        // Nếu bộ nhớ chỉ còn dưới 50MB, không cho phép tải đệm nữa
         if (storage && (storage.quotaMB - storage.usedMB) < 50) {
             console.warn("⚠️ Bộ nhớ gần đầy, bỏ qua tải đệm.");
-            return;
+            return false; // Trả về false vì chưa tải được
         }
 
         const res = await fetch(`/stream/${songId}`);
-        if (!res.ok) return;
+        if (!res.ok) return false;
         const blob = await res.blob();
         
         try {
@@ -1548,7 +1545,7 @@ async function silentDownloadNext(songId) {
         } catch (dbError) {
             if (dbError.name === 'QuotaExceededError') {
                 await clearAllTempFiles();
-                await OfflineDB.saveSong(songId, blob); // Thử lưu lại
+                await OfflineDB.saveSong(songId, blob); 
             } else throw dbError;
         }
 
@@ -1557,7 +1554,11 @@ async function silentDownloadNext(songId) {
             saveTempList();
             updateStorageUI();
         }
-    } catch (e) { console.warn("Lỗi tải đệm ngầm:", e.message); }
+        return true; // Tải thành công
+    } catch (e) { 
+        console.warn("Lỗi tải đệm ngầm:", e.message); 
+        return false; // Lỗi thì trả về false
+    }
 }
 
 document.addEventListener('keydown', e => {

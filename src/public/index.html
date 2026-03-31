@@ -31,35 +31,42 @@
     </div>
 
     <div class="header">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; width: 100%; white-space: nowrap; overflow: hidden;">
+        <div class="header-inner">
             
-            <button class="btn-icon-only" onclick="toggleDownloaderView()" id="btnDownloadView" title="Tải nhạc mới" 
-                style="display: flex; align-items: center; gap: 4px; font-size: 0.9rem; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 20px;">
-                ⬇️ <span id="storageInfo" style="font-size: 0.75rem; color: #aaa; font-weight: normal;">...</span>
-            </button>
+            <div class="top-bar">
+                
+                <div class="top-bar-left">
+                    <button class="btn-pill" onclick="toggleDownloaderView()" id="btnDownloadView" title="Tải nhạc mới / Quản lý">
+                        <span id="dlViewIcon">⬇️</span>
+                    </button>
+                </div>
+
+                <div class="top-bar-center">
+                    <h2 class="app-title" onclick="location.reload()" title="Tải lại trang">
+                        <span id="storageInfo" class="storage-text">...</span>
+                        ☁️ <span id="count">0</span> <span class="hide-on-mobile">&nbsp;Files</span>
+                    </h2>
+                </div>
+
+                <div class="top-bar-right">
+                    <button class="btn-circle" onclick="updateLibrary()" id="btnScan" title="Cập nhật thư viện">
+                        <span id="scanIcon">🔄</span>
+                    </button>
+                </div>
+
+            </div>
             
-            <h2 style="font-size: 1.1rem; margin: 0; cursor: pointer; text-overflow: ellipsis; overflow: hidden; max-width: 50%;" 
-                onclick="location.reload()" title="Tải lại trang">
-                ☁️ <span id="count">0</span> Files
-            </h2>
-            
-            <button class="btn-icon-only" onclick="updateLibrary()" id="btnScan" title="Cập nhật" 
-                style="width: 30px; height: 30px; font-size: 1rem; flex-shrink: 0;">
-                <span id="scanIcon">🔄</span>
-            </button>
-            
-        </div>
-        
-        <div class="controls-top">
-             <button id="btnSearchToggle" class="btn-icon-only" onclick="toggleSearch()" title="Tìm kiếm">🔎</button>
-            
-            <select id="folderFilter" onchange="filterPlaylist()">
-                <option value="favorites">❤️ Bài hát yêu thích</option>
-                <option value="all" selected>📁 Tất cả thư mục</option>
-            </select>
-            
-            <input type="text" id="searchInput" placeholder="Gõ tên bài hát..." oninput="searchSongs()">
-                        
+            <div class="controls-top">
+                <button id="btnSearchToggle" class="btn-icon-only" onclick="toggleSearch()" title="Tìm kiếm">🔎</button>
+                
+                <select id="folderFilter" onchange="filterPlaylist()">
+                    <option value="favorites">❤️ Bài hát yêu thích</option>
+                    <option value="all" selected>📁 Tất cả thư mục</option>
+                </select>
+                
+                <input type="text" id="searchInput" placeholder="Gõ tên bài hát..." oninput="searchSongs()">
+            </div>
+
         </div>
     </div>
 
