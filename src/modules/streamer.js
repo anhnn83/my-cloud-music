@@ -1,4 +1,4 @@
-// src/modules/streamer.js - Version 5.3
+// src/modules/streamer.js - Version 5.4
 const fs = require('fs');
 const path = require('path');
 const drive = require('./drive');
@@ -22,7 +22,7 @@ function isValidMp3Header(filePath) {
     } catch (e) { return false; }
 }
 
-async function getSongStream(songId, retryCount = 0, rangeHeader = null) {
+async function getSongStream(songId, retryCount = 0, rangeHeader = null, signal = null) {
     const filename = `${songId}.mp3`;
     const filePath = path.join(CACHE_DIR, filename);
 
@@ -33,11 +33,10 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null) {
             console.log(`🗑️ File lỗi cache: ${songId}. Retry: ${retryCount}`);
             if (retryCount >= 1) {
                 try { fs.unlinkSync(filePath); } catch(e){}
-                // Nếu lỗi cache nặng, có thể file gốc cũng hỏng, nhưng tạm thời chỉ xóa cache
                 throw new Error('CORRUPT_FILE_ON_DRIVE');
             }
             try { fs.unlinkSync(filePath); } catch(e){}
-            return getSongStream(songId, retryCount + 1); 
+            return getSongStream(songId, retryCount + 1, rangeHeader, signal); 
         }
         return { type: 'file', filename: filename };
     }
@@ -58,19 +57,23 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null) {
 
             const fileSize = meta.data.size ? parseInt(meta.data.size) : null;
             downloadInBackground(songId, fileSize);
+
             const driveHeaders = { 'Accept-Encoding': 'identity' };
             if (rangeHeader) {
                 driveHeaders['Range'] = rangeHeader;
             }
 
+            // [SỬA] Truyền thuộc tính signal vào để Google API biết khi nào cần dừng
             const res = await drive.files.get(
                 { fileId: songId, alt: 'media', supportsAllDrives: true },
-                { responseType: 'stream', headers: driveHeaders }
+                { responseType: 'stream', headers: driveHeaders, signal: signal }
             );
+            
             const responseHeaders = {
                 'Content-Type': 'audio/mpeg',
                 'Accept-Ranges': 'bytes'
             };
+            
             if (res.headers['content-range']) {
                 responseHeaders['Content-Range'] = res.headers['content-range'];
             }
@@ -79,6 +82,7 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null) {
             } else if (fileSize && !rangeHeader) {
                 responseHeaders['Content-Length'] = fileSize;
             }
+            
             return {
                 type: 'stream',
                 stream: res.data,
@@ -87,9 +91,13 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null) {
             };
 
         } catch (error) {
+            // [MỚI] Bắt tín hiệu ngắt từ AbortController và ném ra lỗi tĩnh
+            if (error.name === 'AbortError' || (error.message && error.message.includes('canceled'))) {
+                throw new Error('CLIENT_ABORTED');
+            }
+
             console.error(`❌ Stream Error ${songId}:`, error.message);
             
-            // [LOGIC 2] Nếu lỗi 404 (Không tìm thấy trên Drive) -> Xóa khỏi DB ngay
             if (error.code === 404 || (error.response && error.response.status === 404)) {
                 console.log(`🗑️ File ${songId} không còn trên Drive (404) -> Xóa khỏi DB.`);
                 deleteSong.run(songId); 

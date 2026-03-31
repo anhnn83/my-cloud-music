@@ -1,8 +1,8 @@
-// src/app.js - Version 1.0
+// src/app.js - Version 1.1
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
-fastify.register(require('@fastify/compress')); // Nén Gzip để tải JSON nhanh hơn
+fastify.register(require('@fastify/compress'));
 const path = require('path');
 const fs = require('fs');
 
@@ -297,7 +297,17 @@ fastify.get('/stream/:id', async (request, reply) => {
     try {
         const songId = request.params.id;
         const range = request.headers.range;
-        const result = await getSongStream(songId, 0, range);
+
+        // [MỚI] 1. Khởi tạo bộ điều khiển ngắt kết nối
+        const ac = new AbortController();
+        
+        // [MỚI] 2. Lắng nghe sự kiện trình duyệt ngắt kết nối đột ngột (tua nhạc, next bài)
+        request.raw.on('close', () => {
+            ac.abort(); // Gửi lệnh hủy ngay lập tức
+        });
+
+        // [SỬA] 3. Truyền thêm ac.signal vào tham số thứ 4
+        const result = await getSongStream(songId, 0, range, ac.signal);
 
         if (result.type === 'file') {
             const filePath = path.join(CACHE_ROOT, result.filename);
@@ -325,6 +335,10 @@ fastify.get('/stream/:id', async (request, reply) => {
             return reply.send(result.stream);
         }
     } catch (error) {
+        // [MỚI] 4. Xử lý êm đẹp khi Client chủ động ngắt, không in lỗi ra console
+        if (error.message === 'CLIENT_ABORTED') {
+            return reply.code(499).send(); // 499: Client Closed Request
+        }
         if (error.message === 'FILE_DELETED_ON_DRIVE') return reply.code(404).send({ error: 'File deleted' });
         reply.code(500).send("Stream Error");
     }
