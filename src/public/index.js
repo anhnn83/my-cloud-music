@@ -1,5 +1,5 @@
-// src/public/index.js - Version 5.8
-console.log("--- src/public/index.js - Version 5.8 ---");
+// src/public/index.js - Version 5.9
+console.log("--- src/public/index.js - Version 5.9 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -70,7 +70,7 @@ async function init(isSilent = false) {
         // Hàm phụ trợ để sinh thẻ <li>
         const makeLi = (val, text) => {
             const isActive = val === currentFilterVal ? 'active' : '';
-            return `<li class="${isActive}" onclick="selectFolder('${val}', '${text.replace(/'/g, "\\'")}')">${text}</li>`;
+            return `<li class="${isActive}" onclick="selectFolder(this, '${val}', '${text.replace(/'/g, "\\'")}')">${text}</li>`;
         };
 
         // BƯỚC B: Tạo các Option cố định
@@ -1426,14 +1426,19 @@ async function refreshServerCache(event, songId) {
 async function updateStorageUI() {
     let usedMB = 0, quotaMB = 0;
     
-    // A. Lấy Local Storage (RAM/Disk của trình duyệt)
+    // A. Lấy Local Storage (Giữ nguyên tính toán là MB để logic bên dưới không bị lỗi)
     let localStr = "💻 Local: ?/? MB";
     if (navigator.storage && navigator.storage.estimate) {
         try {
             const estimate = await navigator.storage.estimate();
-            usedMB = Math.round(estimate.usage / (1024 * 1024 * 1024));
-            quotaMB = Math.round(estimate.quota / (1024 * 1024 * 1024));
-            localStr = `💻 Local: ${usedMB}/${quotaMB} GB`;
+            // [SỬA] Chia cho 1024 * 1024 để ra đúng MB
+            usedMB = Math.round(estimate.usage / (1024 * 1024));
+            quotaMB = Math.round(estimate.quota / (1024 * 1024));
+            
+            // Nếu muốn hiện UI đẹp, ta có thể đổi sang GB chỉ ở phần hiển thị chữ (localStr)
+            const displayUsedGB = (usedMB / 1024).toFixed(2);
+            const displayQuotaGB = (quotaMB / 1024).toFixed(2);
+            localStr = `💻 Local: ${displayUsedGB}/${displayQuotaGB} GB`;
         } catch(e) {}
     }
     document.querySelectorAll('.dyn-local').forEach(el => el.innerText = localStr);
@@ -1545,26 +1550,20 @@ function closeBottomSheet(event) {
 }
 
 // Hàm được gọi khi bấm chọn một dòng trong Bottom Sheet
-function selectFolder(value, displayName) {
+// [SỬA] Thêm tham số 'el'
+function selectFolder(el, value, displayName) {
     const btn = document.getElementById('btnFolderSelect');
-    
-    // Lưu giá trị vào data attribute để JS biết đang chọn cái gì
     btn.setAttribute('data-value', value); 
-    
-    // Đổi chữ hiển thị trên nút (Rút gọn chữ nếu cần)
-    // Xóa bớt số lượng trong ngoặc để nút nhìn gọn gàng hơn
+
     const shortName = displayName.replace(/\s\(\d+\)$/, ''); 
     btn.innerText = shortName;
-    
-    // Đóng sheet
+
     closeBottomSheet();
-    
-    // Gọi hàm lọc nhạc cũ của bạn (Sẽ cần sửa nhẹ hàm filterPlaylist)
     filterPlaylist();
-    
-    // Cập nhật lại class 'active' cho danh sách
+
+    // Dùng luôn tham số 'el' thay vì 'event.currentTarget'
     document.querySelectorAll('#folderList li').forEach(li => li.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+    el.classList.add('active');
 }
 
 document.addEventListener('keydown', e => {
