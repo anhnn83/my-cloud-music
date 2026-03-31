@@ -1,8 +1,9 @@
-// src/public/index.js - Version 4.9
-console.log("--- src/public/index.js - Version 4.9 ---");
+// src/public/index.js - Version 5.2
+console.log("--- src/public/index.js - Version 5.2 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
+let currentPlayingId = null;
 let isPlaying = false, isShuffle = false, loopMode = 0;
 const audio = document.getElementById('audio');
 const seekBar = document.getElementById('seekBar');
@@ -29,15 +30,12 @@ async function init(isSilent = false) {
         // [OFFLINE UPDATE] 1. Cố gắng lấy dữ liệu Online
         try {
             const res = await fetch('/api/songs');
-            if (!res.ok) throw new Error("Offline"); // Force lỗi nếu server không trả về 200
+            if (!res.ok) throw new Error("Offline");
             data = await res.json();
-            
-            // Nếu có mạng: Lưu danh sách bài hát vào DB để dùng khi mất mạng sau này
             if (typeof OfflineDB !== 'undefined') {
                 await OfflineDB.saveMetadata(data.data);
             }
         } catch (err) {
-            // [OFFLINE UPDATE] 2. Nếu lỗi mạng -> Lấy dữ liệu Offline từ DB
             console.warn("Mất kết nối! Đang tải chế độ Offline...");
             if (typeof OfflineDB !== 'undefined') {
                 const offlineSongs = await OfflineDB.getMetadata();
@@ -52,8 +50,6 @@ async function init(isSilent = false) {
                 throw err;
             }
         }
-        
-        // Lưu vào biến toàn cục
         allSongs = data.data; 
         document.getElementById('count').innerText = data.total;
 
@@ -61,20 +57,14 @@ async function init(isSilent = false) {
         const currentFilterVal = document.getElementById('folderFilter').value;
         const select = document.getElementById('folderFilter');
         select.innerHTML = ''; 
-
         // BƯỚC A: Tính toán số lượng bài hát trong từng thư mục
         const folderCounts = {};
         allSongs.forEach(s => {
             const fName = (s.folder_path || 'Root').trim();
             folderCounts[fName] = (folderCounts[fName] || 0) + 1;
         });
-        
-        // Lấy danh sách folder và sắp xếp A-Z
         const folders = Object.keys(folderCounts).sort();
-
-        // Tính số lượng bài yêu thích
         const favCount = allSongs.filter(s => s.is_favorite).length;
-
         // BƯỚC B: Tạo các Option cố định (kèm số lượng nếu có thể tính nhanh)
         const optAll = document.createElement('option'); 
         optAll.value = 'all'; 
@@ -104,28 +94,19 @@ async function init(isSilent = false) {
         // BƯỚC C: Tạo Option cho từng thư mục với số lượng
         folders.forEach(f => {
             const opt = document.createElement('option');
-            opt.value = f; // Giá trị value giữ nguyên để lọc đúng
-            
-            // Format hiển thị: thay dấu / bằng dấu mũi tên cho đẹp
+            opt.value = f;
             const displayName = f.replace(/\//g, ' › ');
-            
-            // Hiển thị: 📁 Tên Folder (Số lượng)
-            opt.innerText = `📁 ${displayName} (${folderCounts[f]})`; 
-            
+            opt.innerText = `📁 ${displayName} (${folderCounts[f]})`;           
             select.appendChild(opt);
         });
-
-        // Khôi phục lại lựa chọn cũ
         if (currentFilterVal) select.value = currentFilterVal;
 
         if (!isSilent) {
             // === LOAD LẦN ĐẦU ===
             currentPlaylist = [...allSongs];
-            
-            // Nếu đang offline thì tự động lọc ra các bài đã tải để user dễ dùng
             if (isOfflineMode) {
                 select.value = 'offline_only';
-                await filterPlaylist(); // Sẽ gọi renderPlaylist bên trong
+                await filterPlaylist();
             } else {
                 renderPlaylist(); 
             }
@@ -279,6 +260,7 @@ function prepareNextSong() {
 // --- 3. CORE: LOAD & PLAY SONG (OFFLINE UPGRADE) ---
 
 async function loadSong(song, autoPlay = true) {
+    currentPlayingId = song.id;
     updatePlayerUI(song);
     updateMediaSession(song);
     isPreloaded = false;
@@ -351,27 +333,17 @@ async function loadSong(song, autoPlay = true) {
                 playPromise
                     .then(() => {
                         updatePlayBtn(true);
-                        updateMediaSession(song); // Cập nhật lại MediaSession để màn hình khóa hiện đúng
+                        updateMediaSession(song);
+                        updatePositionState();
                     })
                     .catch(e => {
                         console.warn("AutoPlay blocked/interrupted:", e);
                         updatePlayBtn(false);
-                        // [iOS RETRY] Thử lại 1 lần nếu thất bại (do đổi mạng hoặc lag)
                         setTimeout(() => audio.play().catch(()=>{}), 1000);
                     });
             }
         }
     };
-
-    // 6. Xử lý lỗi
-    audio.onerror = (e) => {
-        console.error("Audio Error:", e);
-        if (autoPlay && !navigator.onLine && !isPlayingOffline) {
-            // Nếu mất mạng mà đang cố stream -> Tự động qua bài
-            playNext(true);
-        }
-    };
-
     // [iOS] Bắt buộc load lại
     audio.load();
 }
@@ -405,15 +377,15 @@ audio.ontimeupdate = () => {
         }
     }
 
-    if ('mediaSession' in navigator) {
-        try {
-            navigator.mediaSession.setPositionState({
-                duration: audio.duration,
-                playbackRate: audio.playbackRate,
-                position: audio.currentTime
-            });
-        } catch (e) {}
-    }
+    // if ('mediaSession' in navigator) {
+    //     try {
+    //         navigator.mediaSession.setPositionState({
+    //             duration: audio.duration,
+    //             playbackRate: audio.playbackRate,
+    //             position: audio.currentTime
+    //         });
+    //     } catch (e) {}
+    // }
     
     if (!isPreloaded && pendingNextIndex !== -1 && (audio.currentTime / audio.duration > 0.7)) {
         const nextSong = currentPlaylist[pendingNextIndex];
@@ -430,6 +402,7 @@ audio.ontimeupdate = () => {
     if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentIndex !== -1) {
         const song = currentPlaylist[currentIndex];
         const currentFolder = document.getElementById('folderFilter').value;
+        song.current_time = audio.currentTime;
         fetch('/api/progress', { 
             method: 'POST', 
             headers: {'Content-Type':'application/json'}, 
@@ -574,7 +547,8 @@ function toggleLoop() {
 
 function seekAudio() { 
     audio.currentTime = seekBar.value; 
-    document.getElementById('currTime').innerText = formatTime(audio.currentTime); 
+    document.getElementById('currTime').innerText = formatTime(audio.currentTime);
+    updatePositionState();
 }
 
 // [MỚI] Hàm xử lý khi bấm nút Download trên Player
@@ -899,7 +873,7 @@ function searchSongs() {
         return songNameClean.includes(q);
     });
 
-    renderPlaylist();
+    finishFilter();
 }
 
 async function filterPlaylist() { 
@@ -953,11 +927,13 @@ async function filterPlaylist() {
 }
 
 function finishFilter() {
-    if(isShuffle) toggleShuffle(); 
-    else {
-        renderPlaylist();
-        prepareNextSong();
+    if (currentPlayingId) {
+        currentIndex = currentPlaylist.findIndex(s => s.id === currentPlayingId);
+    } else {
+        currentIndex = -1;
     }
+    renderPlaylist();
+    prepareNextSong();
 }
 
 function renderPlaylist() {
@@ -1084,9 +1060,17 @@ function toggleDownloaderView() {
 
 audio.addEventListener('error', (e) => {
     if (audio.error && (audio.error.code === 4 || audio.error.code === 3)) {
-        console.warn("⚠️ Bài hát lỗi (404/Decode).");
+        console.warn("⚠️ Bài hát lỗi hoặc không thể stream.");
+        
+        // Nếu rớt mạng, chuyển qua bài khác hi vọng đã được tải offline
+        if (!navigator.onLine) {
+            showStatus("⚠️ Mất mạng! Đang tìm bài hát Offline...", 3000);
+            playNext(true);
+            return;
+        }
+
         if (typeof showStatus === 'function') {
-            showStatus("⚠️ Lỗi bài hát. Đang bỏ qua...", 3000);
+            showStatus("⚠️ Lỗi dữ liệu bài hát. Đang bỏ qua...", 3000);
         }
 
         if (currentPlaylist.length > 0 && currentIndex > -1) {
@@ -1101,88 +1085,6 @@ audio.addEventListener('error', (e) => {
         }
     }
 });
-
-// function updateMediaSession(song) {
-//     if ('mediaSession' in navigator) {
-//         navigator.mediaSession.metadata = new MediaMetadata({
-//             title: song.name,
-//             artist: "My Cloud Music",
-//             album: song.folder_path || "Unknown Album",
-//             artwork: [
-//                 { src: '/icon.png', sizes: '96x96', type: 'image/png' },
-//                 { src: '/icon.png', sizes: '128x128', type: 'image/png' },
-//                 { src: '/icon.png', sizes: '192x192', type: 'image/png' },
-//                 { src: '/icon.png', sizes: '512x512', type: 'image/png' },
-//             ]
-//         });
-
-//         // [FIX RESUME BUG] Cập nhật handler cho nút Play/Pause
-//         const actionHandlers = [
-//             ['play', () => {
-//                 // Bước 1: Thử phát bình thường
-//                 const playPromise = audio.play();
-
-//                 if (playPromise !== undefined) {
-//                     playPromise.then(() => {
-//                         // [QUAN TRỌNG] Hack cho iOS PWA:
-//                         // Khi resume từ background, buffer có thể bị lệch. 
-//                         // Việc gán lại currentTime = chính nó sẽ buộc iOS Audio Engine đồng bộ lại dữ liệu.
-//                         if (audio.duration && !isNaN(audio.duration)) {
-//                             audio.currentTime = audio.currentTime; 
-//                         }
-                        
-//                         updatePlayBtn(true);
-//                         navigator.mediaSession.playbackState = "playing";
-//                     })
-//                     .catch((e) => {
-//                         console.warn("Background resume failed, reloading stream...", e);
-                        
-//                         // Bước 2: Fallback (Nếu socket đã bị iOS ngắt hoàn toàn)
-//                         // Lưu lại vị trí hiện tại -> Load lại stream -> Tua tới vị trí cũ -> Phát
-//                         const savedTime = audio.currentTime;
-//                         audio.load(); // Tái tạo kết nối mạng
-                        
-//                         // Đợi 1 chút để load event kích hoạt (dùng one-shot listener)
-//                         const onCanPlayOnce = () => {
-//                             audio.currentTime = savedTime;
-//                             audio.play().then(() => {
-//                                 updatePlayBtn(true);
-//                                 navigator.mediaSession.playbackState = "playing";
-//                             }).catch(() => {});
-//                             audio.removeEventListener('canplay', onCanPlayOnce);
-//                         };
-                        
-//                         audio.addEventListener('canplay', onCanPlayOnce);
-//                     });
-//                 }
-//             }],
-//             ['pause', () => {
-//                 audio.pause();
-//                 updatePlayBtn(false);
-//                 navigator.mediaSession.playbackState = "paused";
-//             }],
-//             ['previoustrack', () => playPrev()],
-//             ['nexttrack',     () => playNext(true)],
-//             ['seekbackward',  (details) => { 
-//                 audio.currentTime = Math.max(audio.currentTime - (details.seekOffset || 10), 0); 
-//                 updatePositionState();
-//             }],
-//             ['seekforward',   (details) => { 
-//                 audio.currentTime = Math.min(audio.currentTime + (details.seekOffset || 10), audio.duration); 
-//                 updatePositionState();
-//             }],
-//             ['seekto',        (details) => { 
-//                 if (details.fastSeek && 'fastSeek' in audio) audio.fastSeek(details.seekTime);
-//                 else audio.currentTime = details.seekTime; 
-//                 updatePositionState();
-//             }],
-//         ];
-
-//         for (const [action, handler] of actionHandlers) {
-//             try { navigator.mediaSession.setActionHandler(action, handler); } catch (error) {}
-//         }
-//     }
-// }
 
 function updateMediaSession(song) {
     if ('mediaSession' in navigator) {
@@ -1201,16 +1103,12 @@ function updateMediaSession(song) {
         const actionHandlers = [
             ['play', () => {
                 // --- GIẢI PHÁP: KICKSTART DECODER ---
-                // Thay vì reload src (gây đơ), ta buộc iOS đồng bộ lại decoder bằng cách tua nhẹ.
-                
                 audio.play()
                     .then(() => {
                         // Kiểm tra nếu đang ở iOS (cơ chế bảo vệ)
                         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                         
                         if (isIOS && audio.duration) {
-                            // "Cú lắc": Tua lùi 0.1 giây
-                            // Hành động này buộc iOS phải buffer lại dữ liệu tại điểm mới
                             const safeTime = Math.max(0, audio.currentTime - 0.1);
                             audio.currentTime = safeTime;
                         }
@@ -1220,7 +1118,6 @@ function updateMediaSession(song) {
                     })
                     .catch((e) => {
                         console.warn("Resume failed, trying hard reload...", e);
-                        // Chỉ reload khi thực sự lỗi (Socket đã chết hẳn)
                         const t = audio.currentTime;
                         audio.load();
                         audio.currentTime = t;
@@ -1256,13 +1153,28 @@ function updateMediaSession(song) {
 }
 
 // Hàm phụ trợ để cập nhật vị trí thời gian cho màn hình khóa
+// function updatePositionState() {
+//     if ('setPositionState' in navigator.mediaSession && !isNaN(audio.duration)) {
+//         navigator.mediaSession.setPositionState({
+//             duration: audio.duration,
+//             playbackRate: audio.playbackRate,
+//             position: audio.currentTime
+//         });
+//     }
+// }
+
 function updatePositionState() {
-    if ('setPositionState' in navigator.mediaSession && !isNaN(audio.duration)) {
-        navigator.mediaSession.setPositionState({
-            duration: audio.duration,
-            playbackRate: audio.playbackRate,
-            position: audio.currentTime
-        });
+    if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+        // Chỉ cập nhật khi audio đã sẵn sàng
+        if (audio.duration && !isNaN(audio.duration)) {
+            try {
+                navigator.mediaSession.setPositionState({
+                    duration: audio.duration,
+                    playbackRate: audio.playbackRate,
+                    position: audio.currentTime
+                });
+            } catch (e) {}
+        }
     }
 }
 
@@ -1398,6 +1310,7 @@ function seekRelative(seconds) {
         const currTimeLabel = document.getElementById('currTime');
         if (seekBar) seekBar.value = newTime;
         if (currTimeLabel) currTimeLabel.innerText = formatTime(newTime);
+        updatePositionState();
     }
 }
 
