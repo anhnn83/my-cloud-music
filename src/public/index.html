@@ -291,6 +291,23 @@
         <!-- <audio id="audio" style="display:none;" preload="metadata"></audio> -->
         <audio id="audio" style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none;" preload="auto" playsinline></audio>
     </div>
+    
+    <div id="folderBottomSheet" class="bottom-sheet-overlay" onclick="closeBottomSheet(event)">
+        <div class="bottom-sheet-content" onclick="event.stopPropagation()">
+            <div class="bottom-sheet-header">
+                <h3>Chọn Thư Mục</h3>
+                <button class="btn-close-sheet" onclick="closeBottomSheet()">✕</button>
+            </div>
+            
+            <ul id="folderList" class="folder-list">
+                <li onclick="selectFolder(this, 'all', '📁 Tất cả thư mục')">📁 Tất cả thư mục</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="offline-db.js"></script>
+    <script src="index.js"></script>
+    <script src="downloader.js"></script>
 
     <script src="offline-db.js"></script>
     <script src="index.js"></script>
