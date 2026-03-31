@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.7
-console.log("--- src/public/index.js - Version 4.7 ---");
+// src/public/index.js - Version 4.8
+console.log("--- src/public/index.js - Version 4.8 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -636,19 +636,30 @@ async function toggleDownload(event, songId) {
         }
     };
 
-    if (isDownloaded) {
-        // --- XÓA ---
+    const isTemp = tempPreloadIds.includes(songId);
+
+    if (isDownloaded && !isTemp) {
+        // --- TRẠNG THÁI 1: Đã tải vĩnh viễn -> XÓA ---
         if (!confirm('Xóa bài hát này khỏi bộ nhớ máy?')) return;
         await OfflineDB.deleteSong(songId);
         
         updateUI('normal', '⬇️', '⬇️', 'Tải Offline');
         showStatus("🗑️ Đã xóa bản Offline", 2000);
+        updateStorageUI();
         
         if(document.getElementById('folderFilter').value === 'offline_only') {
             filterPlaylist();
         }
+    } else if (isDownloaded && isTemp) {
+        // --- TRẠNG THÁI 2: Đang là file Tạm -> NÂNG CẤP VĨNH VIỄN ---
+        // Không cần tải lại, chỉ cần gỡ bỏ cái "Mác" Tạm đi là xong!
+        tempPreloadIds = tempPreloadIds.filter(id => id !== songId);
+        saveTempList();
+        
+        updateUI('done', '✅', '✅', 'Đã tải (Nhấn để xóa)');
+        showStatus("⭐ Đã ghim bài hát thành Offline vĩnh viễn", 2000);
     } else {
-        // --- TẢI ---
+        // --- TRẠNG THÁI 3: Chưa tải -> TẢI MỚI ---
         try {
             updateUI('loading', '⏳', '⏳', 'Đang tải...');
             
@@ -657,12 +668,6 @@ async function toggleDownload(event, songId) {
             const blob = await res.blob();
             
             await OfflineDB.saveSong(songId, blob);
-
-            // [MỚI] Chuyển từ "Tạm" sang "Vĩnh viễn" (Case B)
-            if (tempPreloadIds.includes(songId)) {
-                tempPreloadIds = tempPreloadIds.filter(id => id !== songId);
-                saveTempList();
-            }
             updateStorageUI();
             
             updateUI('done', '✅', '✅', 'Đã tải (Nhấn để xóa)');
@@ -736,12 +741,30 @@ async function downloadAllInCurrentPlaylist() {
     // 2. Chạy vòng lặp tải nhạc
     for (const song of currentPlaylist) {
         const isDownloaded = await OfflineDB.isDownloaded(song.id);
+        const isTemp = tempPreloadIds.includes(song.id);
         const btnList = document.getElementById(`btn-dl-${song.id}`);
 
-        if (isDownloaded) {
+        if (isDownloaded && !isTemp) {
+            // Đã có vĩnh viễn -> Bỏ qua
             skipCount++;
             updateProgressUI(); 
             continue; 
+        }
+
+        if (isDownloaded && isTemp) {
+            // Đang là Temp -> Chuyển thành Vĩnh viễn (Chớp mắt là xong, không gọi API)
+            tempPreloadIds = tempPreloadIds.filter(id => id !== song.id);
+            saveTempList();
+            successCount++;
+            
+            if (btnList) {
+                btnList.innerText = '✅';
+                btnList.classList.add('downloaded');
+                btnList.disabled = false;
+                btnList.title = 'Đã tải (Nhấn để xóa)';
+            }
+            updateProgressUI();
+            continue;
         }
 
         try {
@@ -1504,8 +1527,9 @@ async function clearAllTempFiles() {
 async function silentDownloadNext(songId) {
     if (typeof OfflineDB === 'undefined' || !navigator.onLine) return;
 
+    // [FIX LỖI LOGIC] Nếu đã có trong máy (dù là Temp hay Vĩnh viễn) thì KHÔNG tải lại nữa
     const isDownloaded = await OfflineDB.isDownloaded(songId);
-    if (isDownloaded && !tempPreloadIds.includes(songId)) return;
+    if (isDownloaded) return;
 
     try {
         const storage = await updateStorageUI();
