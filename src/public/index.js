@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.6
-console.log("--- src/public/index.js - Version 4.6 ---");
+// src/public/index.js - Version 4.7
+console.log("--- src/public/index.js - Version 4.7 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -415,14 +415,18 @@ audio.ontimeupdate = () => {
         } catch (e) {}
     }
     
-    if (!isPreloaded && pendingNextIndex !== -1 && (audio.currentTime / audio.duration > 0.9)) {
+    if (!isPreloaded && pendingNextIndex !== -1 && (audio.currentTime / audio.duration > 0.5)) {
         isPreloaded = true;
         const nextSong = currentPlaylist[pendingNextIndex];
-        // Chỉ preload nếu online (chưa hỗ trợ preload blob offline phức tạp)
+        
         if (!audio.src.startsWith('blob:')) {
-             console.log("⚡ Preloading:", nextSong.name);
              fetch(`/api/preload/${nextSong.id}`).catch(()=>{});
         }
+        
+        // Luôn thử tải ngầm về máy client
+        silentDownloadNext(nextSong.id).catch(() => {
+            isPreloaded = false; // Lỗi thì cho phép thử lại
+        });
     }
 
     if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentIndex !== -1) {
@@ -751,6 +755,12 @@ async function downloadAllInCurrentPlaylist() {
             const blob = await res.blob();
             
             await OfflineDB.saveSong(song.id, blob);
+
+            if (tempPreloadIds.includes(song.id)) {
+                tempPreloadIds = tempPreloadIds.filter(id => id !== song.id);
+                saveTempList();
+            }
+            updateStorageUI();
             
             if (btnList) {
                 btnList.innerText = '✅';
