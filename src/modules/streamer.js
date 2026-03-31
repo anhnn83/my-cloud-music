@@ -1,5 +1,4 @@
-// src/modules/streamer.js - Version 5.2 (Auto Delete Missing Files)
-
+// src/modules/streamer.js - Version 5.3
 const fs = require('fs');
 const path = require('path');
 const drive = require('./drive');
@@ -23,7 +22,7 @@ function isValidMp3Header(filePath) {
     } catch (e) { return false; }
 }
 
-async function getSongStream(songId, retryCount = 0) {
+async function getSongStream(songId, retryCount = 0, rangeHeader = null) {
     const filename = `${songId}.mp3`;
     const filePath = path.join(CACHE_DIR, filename);
 
@@ -52,30 +51,39 @@ async function getSongStream(songId, retryCount = 0) {
                 supportsAllDrives: true 
             });
 
-            // [LOGIC 1] Nếu file nằm trong thùng rác -> Xóa khỏi DB ngay
             if (meta.data.trashed) {
-                console.log(`🗑️ File ${songId} nằm trong thùng rác Drive -> Xóa khỏi DB.`);
                 deleteSong.run(songId);
                 throw new Error('FILE_DELETED_ON_DRIVE');
             }
 
             const fileSize = meta.data.size ? parseInt(meta.data.size) : null;
             downloadInBackground(songId, fileSize);
+            const driveHeaders = { 'Accept-Encoding': 'identity' };
+            if (rangeHeader) {
+                driveHeaders['Range'] = rangeHeader;
+            }
 
             const res = await drive.files.get(
                 { fileId: songId, alt: 'media', supportsAllDrives: true },
-                { responseType: 'stream', headers: { 'Accept-Encoding': 'identity' } }
+                { responseType: 'stream', headers: driveHeaders }
             );
-
+            const responseHeaders = {
+                'Content-Type': 'audio/mpeg',
+                'Accept-Ranges': 'bytes'
+            };
+            if (res.headers['content-range']) {
+                responseHeaders['Content-Range'] = res.headers['content-range'];
+            }
+            if (res.headers['content-length']) {
+                responseHeaders['Content-Length'] = res.headers['content-length'];
+            } else if (fileSize && !rangeHeader) {
+                responseHeaders['Content-Length'] = fileSize;
+            }
             return {
                 type: 'stream',
                 stream: res.data,
-                headers: {
-                    'Content-Type': 'audio/mpeg',
-                    'Content-Length': fileSize,
-                    'Accept-Ranges': 'bytes'
-                },
-                status: 200
+                headers: responseHeaders,
+                status: res.status
             };
 
         } catch (error) {
@@ -93,7 +101,6 @@ async function getSongStream(songId, retryCount = 0) {
 }
 
 async function preloadSong(songId) {
-    // ... (Giữ nguyên logic preload cũ)
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     if (fs.existsSync(filePath)) return; 
     try {
@@ -104,7 +111,6 @@ async function preloadSong(songId) {
 }
 
 async function downloadInBackground(songId, expectedSize) {
-    // ... (Giữ nguyên logic download cũ)
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     const tempPath = path.join(CACHE_DIR, `${songId}.temp`);
     if (fs.existsSync(tempPath) || fs.existsSync(filePath)) return;

@@ -1,5 +1,4 @@
-// src/app.js - Version FINAL CLEAN
-// Ngày cập nhật: 2024 - Đã tối ưu hóa và làm sạch code
+// src/app.js - Version 1.0
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -31,7 +30,6 @@ fastify.register(require('@fastify/static'), {
     prefix: '/',
     setHeaders: (res, pathStr) => {
         if (pathStr.endsWith('sw.js')) {
-            // Không cache Service Worker để cập nhật phiên bản mới ngay lập tức
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -83,7 +81,7 @@ fastify.post('/api/login', async (request, reply) => {
             path: '/',
             httpOnly: true,
             signed: true,
-            maxAge: 365 * 24 * 60 * 60 // 365 ngày
+            maxAge: 365 * 24 * 60 * 60
         });
         return { status: 'success' };
     } else {
@@ -299,7 +297,7 @@ fastify.get('/stream/:id', async (request, reply) => {
     try {
         const songId = request.params.id;
         const range = request.headers.range;
-        const result = await getSongStream(songId);
+        const result = await getSongStream(songId, 0, range);
 
         if (result.type === 'file') {
             const filePath = path.join(CACHE_ROOT, result.filename);
@@ -322,9 +320,8 @@ fastify.get('/stream/:id', async (request, reply) => {
                 return reply.send(fs.createReadStream(filePath));
             }
         } else {
-            reply.code(result.status);
+            reply.code(result.status); 
             Object.keys(result.headers).forEach(key => reply.header(key, result.headers[key]));
-            reply.header('Accept-Ranges', 'bytes');
             return reply.send(result.stream);
         }
     } catch (error) {
