@@ -96,10 +96,9 @@
             <div class="controls-top">
                 <button id="btnSearchToggle" class="btn-icon-only" onclick="toggleSearch()" title="Tìm kiếm">🔎</button>
                 
-                <select id="folderFilter" onchange="filterPlaylist()">
-                    <option value="favorites">❤️ Bài hát yêu thích</option>
-                    <option value="all" selected>📁 Tất cả thư mục</option>
-                </select>
+            <button id="btnFolderSelect" class="folder-select-btn" onclick="openBottomSheet()">
+                📁 Tất cả thư mục
+            </button>
                 
                 <input type="text" id="searchInput" placeholder="Gõ tên bài hát..." oninput="searchSongs()">
             </div>

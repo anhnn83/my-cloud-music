@@ -1,5 +1,5 @@
-// src/public/index.js - Version 5.7
-console.log("--- src/public/index.js - Version 5.7 ---");
+// src/public/index.js - Version 5.8
+console.log("--- src/public/index.js - Version 5.8 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -53,11 +53,12 @@ async function init(isSilent = false) {
         allSongs = data.data; 
         document.querySelectorAll('.dyn-count').forEach(el => el.innerText = data.total);
 
-        // --- 2. Tạo Menu lọc (Dropdown) [CẬP NHẬT HIỂN THỊ SỐ LƯỢNG] ---
-        const currentFilterVal = document.getElementById('folderFilter').value;
-        const select = document.getElementById('folderFilter');
-        select.innerHTML = ''; 
-        // BƯỚC A: Tính toán số lượng bài hát trong từng thư mục
+        // --- 2. Tạo Menu lọc (Dạng Bottom Sheet) ---
+        const currentFilterVal = document.getElementById('btnFolderSelect').getAttribute('data-value') || 'all';
+        const folderListUl = document.getElementById('folderList');
+        let listHTML = ''; 
+
+        // BƯỚC A: Tính toán số lượng bài hát
         const folderCounts = {};
         allSongs.forEach(s => {
             const fName = (s.folder_path || 'Root').trim();
@@ -65,47 +66,38 @@ async function init(isSilent = false) {
         });
         const folders = Object.keys(folderCounts).sort();
         const favCount = allSongs.filter(s => s.is_favorite).length;
-        // BƯỚC B: Tạo các Option cố định (kèm số lượng nếu có thể tính nhanh)
-        const optAll = document.createElement('option'); 
-        optAll.value = 'all'; 
-        optAll.innerText = `📁 Tất cả thư mục (${allSongs.length})`; 
-        select.appendChild(optAll);
 
-        const optFav = document.createElement('option'); 
-        optFav.value = 'favorites'; 
-        optFav.innerText = `❤️ Bài hát yêu thích (${favCount})`; 
-        select.appendChild(optFav);
+        // Hàm phụ trợ để sinh thẻ <li>
+        const makeLi = (val, text) => {
+            const isActive = val === currentFilterVal ? 'active' : '';
+            return `<li class="${isActive}" onclick="selectFolder('${val}', '${text.replace(/'/g, "\\'")}')">${text}</li>`;
+        };
 
-        const optTop = document.createElement('option'); 
-        optTop.value = 'top100'; 
-        optTop.innerText = '🔥 Top 100 Thường nghe'; 
-        select.appendChild(optTop);
+        // BƯỚC B: Tạo các Option cố định
+        listHTML += makeLi('all', `📁 Tất cả thư mục (${allSongs.length})`);
+        listHTML += makeLi('favorites', `❤️ Bài hát yêu thích (${favCount})`);
+        listHTML += makeLi('top100', `🔥 Top 100 Thường nghe`);
+        listHTML += makeLi('recent', `🆕 Top 100 Mới tải`);
+        listHTML += makeLi('offline_only', `⬇️ Nhạc đã tải`);
 
-        const optRecent = document.createElement('option'); 
-        optRecent.value = 'recent'; 
-        optRecent.innerText = '🆕 Top 100 Mới tải'; 
-        select.appendChild(optRecent);
-        
-        const optOffline = document.createElement('option'); 
-        optOffline.value = 'offline_only'; 
-        optOffline.innerText = '⬇️ Nhạc đã tải'; 
-        select.appendChild(optOffline);
-
-        // BƯỚC C: Tạo Option cho từng thư mục với số lượng
+        // BƯỚC C: Tạo Option cho từng thư mục
         folders.forEach(f => {
-            const opt = document.createElement('option');
-            opt.value = f;
             const displayName = f.replace(/\//g, ' › ');
-            opt.innerText = `📁 ${displayName} (${folderCounts[f]})`;           
-            select.appendChild(opt);
+            listHTML += makeLi(f, `📁 ${displayName} (${folderCounts[f]})`);
         });
-        if (currentFilterVal) select.value = currentFilterVal;
+
+        // Đổ HTML vào danh sách
+        folderListUl.innerHTML = listHTML;
 
         if (!isSilent) {
             // === LOAD LẦN ĐẦU ===
             currentPlaylist = [...allSongs];
             if (isOfflineMode) {
-                select.value = 'offline_only';
+                const btn = document.getElementById('btnFolderSelect');
+                if (btn) {
+                    btn.setAttribute('data-value', 'offline_only');
+                    btn.innerText = '⬇️ Nhạc đã tải';
+                }
                 await filterPlaylist();
             } else {
                 renderPlaylist(); 
@@ -174,10 +166,13 @@ async function checkLastSession() {
         if (lastSession) {
             const song = allSongs.find(s => s.id === lastSession.song_id);
             if (song) {
-                const folderSelect = document.getElementById('folderFilter');
-                if (lastSession.context_path) {
-                    folderSelect.value = lastSession.context_path;
-                    if (folderSelect.selectedIndex === -1) folderSelect.value = 'all';
+            const btn = document.getElementById('btnFolderSelect');
+                if (lastSession.context_path && btn) {
+                    btn.setAttribute('data-value', lastSession.context_path);
+                    const shortName = lastSession.context_path === 'all' ? '📁 Tất cả thư mục' : 
+                                     (lastSession.context_path === 'favorites' ? '❤️ Bài hát yêu thích' : 
+                                     `📁 ${lastSession.context_path.replace(/\//g, ' › ')}`);
+                    btn.innerText = shortName;
                 }
                 filterPlaylist(); 
                 song.current_time = lastSession.current_time;
@@ -396,7 +391,8 @@ audio.ontimeupdate = () => {
     if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentPlayingId) {
         const song = allSongs.find(s => s.id === currentPlayingId); // Tìm từ mảng gốc thay vì currentPlaylist
         if (song) {
-            const currentFolder = document.getElementById('folderFilter').value;
+            const btn = document.getElementById('btnFolderSelect');
+            const currentFolder = btn ? btn.getAttribute('data-value') : 'all';
             song.current_time = audio.currentTime;
             fetch('/api/progress', { 
                 method: 'POST', 
@@ -614,7 +610,9 @@ async function toggleDownload(event, songId) {
         showStatus("🗑️ Đã xóa bản Offline", 2000);
         updateStorageUI();
         
-        if(document.getElementById('folderFilter').value === 'offline_only') {
+        const btn = document.getElementById('btnFolderSelect');
+        const currentFolder = btn ? btn.getAttribute('data-value') : 'all';
+        if(currentFolder === 'offline_only') {
             filterPlaylist();
         }
     } else if (isDownloaded && isTemp) {
@@ -825,7 +823,9 @@ function toggleFavorite(event, songId) {
             const globalSong = allSongs.find(s => s.id === songId);
             if (globalSong) globalSong.is_favorite = d.is_favorite;
 
-            if (document.getElementById('folderFilter').value === 'favorites' && !song.is_favorite) {
+            const btn = document.getElementById('btnFolderSelect');
+            const currentFolder = btn ? btn.getAttribute('data-value') : 'all';
+            if (currentFolder === 'favorites' && !song.is_favorite) {
                 currentPlaylist = currentPlaylist.filter(s => s.id !== songId);
                 finishFilter(); // [FIX] Bắt buộc gọi finishFilter để đồng bộ lại currentIndex
             } else {
@@ -851,7 +851,7 @@ function updatePlayerHeart(isFav) {
 }
 
 function toggleSearch() {
-    const s = document.getElementById('folderFilter');
+    const s = document.getElementById('btnFolderSelect');
     const i = document.getElementById('searchInput');
     const btn = document.getElementById('btnSearchToggle');
     const isSearching = i.style.display === 'block';
@@ -889,7 +889,8 @@ function searchSongs() {
 }
 
 async function filterPlaylist() { 
-    const rawF = document.getElementById('folderFilter').value;
+    const btn = document.getElementById('btnFolderSelect');
+    const rawF = btn ? btn.getAttribute('data-value') : 'all';
     const f = rawF ? rawF.trim() : 'all';
 
     // Reset thanh tìm kiếm khi đổi thư mục
@@ -1024,7 +1025,8 @@ function renderPlaylist() {
     });
 
     // Hiển thị nút Tải Toàn Bộ ở cuối danh sách (ngoại trừ 'all' và 'offline_only')
-    const currentFilter = document.getElementById('folderFilter').value;
+    const btn = document.getElementById('btnFolderSelect');
+    const currentFilter = btn ? btn.getAttribute('data-value') : 'all';
     if (currentFilter !== 'all' && currentFilter !== 'offline_only' && currentPlaylist.length > 0) {
         const downloadAllDiv = document.createElement('div');
         downloadAllDiv.style.textAlign = 'center';
@@ -1521,6 +1523,48 @@ async function silentDownloadNext(songId) {
         console.warn("Lỗi tải đệm ngầm:", e.message); 
         return false;
     }
+}
+
+// --- [MỚI] ĐIỀU KHIỂN BOTTOM SHEET THƯ MỤC ---
+
+function openBottomSheet() {
+    const sheet = document.getElementById('folderBottomSheet');
+    sheet.classList.add('show');
+    // Chặn cuộn trang nền (body) khi mở sheet
+    document.body.style.overflow = 'hidden'; 
+}
+
+function closeBottomSheet(event) {
+    // Nếu có event, kiểm tra xem người dùng có bấm đúng vào lớp phủ đen không
+    if (event && event.target.id !== 'folderBottomSheet') return;
+    
+    const sheet = document.getElementById('folderBottomSheet');
+    sheet.classList.remove('show');
+    // Trả lại khả năng cuộn cho body
+    document.body.style.overflow = ''; 
+}
+
+// Hàm được gọi khi bấm chọn một dòng trong Bottom Sheet
+function selectFolder(value, displayName) {
+    const btn = document.getElementById('btnFolderSelect');
+    
+    // Lưu giá trị vào data attribute để JS biết đang chọn cái gì
+    btn.setAttribute('data-value', value); 
+    
+    // Đổi chữ hiển thị trên nút (Rút gọn chữ nếu cần)
+    // Xóa bớt số lượng trong ngoặc để nút nhìn gọn gàng hơn
+    const shortName = displayName.replace(/\s\(\d+\)$/, ''); 
+    btn.innerText = shortName;
+    
+    // Đóng sheet
+    closeBottomSheet();
+    
+    // Gọi hàm lọc nhạc cũ của bạn (Sẽ cần sửa nhẹ hàm filterPlaylist)
+    filterPlaylist();
+    
+    // Cập nhật lại class 'active' cho danh sách
+    document.querySelectorAll('#folderList li').forEach(li => li.classList.remove('active'));
+    event.currentTarget.classList.add('active');
 }
 
 document.addEventListener('keydown', e => {
