@@ -1,8 +1,8 @@
-// src/app.js - Version 1.0
+// src/app.js - Version 1.1
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
-fastify.register(require('@fastify/compress')); // Nén Gzip để tải JSON nhanh hơn
+fastify.register(require('@fastify/compress'));
 const path = require('path');
 const fs = require('fs');
 
@@ -129,33 +129,48 @@ fastify.addHook('preHandler', async (request, reply) => {
     }
 });
 
-// --- [MỚI] API LẤY DUNG LƯỢNG HỆ THỐNG (SERVER & DRIVE) ---
-function getServerStorage() {
+// --- [MỚI & TỐI ƯU] API LẤY DUNG LƯỢNG HỆ THỐNG (SERVER & DRIVE) ---
+fastify.get('/api/system-storage', async (request, reply) => {
     try {
-        if (process.platform === 'win32') {
-            // Lấy ổ C trên Windows
-            const output = execSync('wmic logicaldisk where "DeviceID=\'C:\'" get FreeSpace,Size /format:csv').toString();
-            const lines = output.trim().split('\n');
-            if (lines.length > 1) {
-                const parts = lines[1].split(',');
-                const free = parseInt(parts[1]);
-                const size = parseInt(parts[2]);
-                return { usedGB: ((size - free) / 1e9).toFixed(1), totalGB: (size / 1e9).toFixed(1) };
+        // 1. DỮ LIỆU DRIVE (Chỉ lấy dung lượng ĐÃ DÙNG từ Database)
+        let driveUsed = '0.00';
+
+        try {
+            const row = db.prepare('SELECT SUM(size) as total_bytes FROM songs').get();
+            if (row && row.total_bytes) {
+                driveUsed = (row.total_bytes / 1e9).toFixed(2); // Đổi Bytes sang GB
             }
-        } else {
-            // Lấy phân vùng gốc (/) trên Linux/Mac
-            const output = execSync('df -k /').toString();
-            const lines = output.trim().split('\n');
-            if (lines.length > 1) {
-                const parts = lines[1].replace(/\s+/g, ' ').split(' ');
-                const total = parseInt(parts[1]) * 1024;
-                const used = parseInt(parts[2]) * 1024;
-                return { usedGB: (used / 1e9).toFixed(1), totalGB: (total / 1e9).toFixed(1) };
-            }
+        } catch (dbErr) {
+            fastify.log.error("Lỗi tính tổng dung lượng DB:", dbErr);
         }
-    } catch (e) { console.error("Lỗi đọc dung lượng Server:", e.message); }
-    return { usedGB: '?', totalGB: '?' };
-}
+
+        // 2. DỮ LIỆU SERVER (Giữ nguyên vì Server luôn quét được tổng dung lượng ổ cứng)
+        let serverUsed = '0.0';
+        let serverTotal = '0.0';
+        
+        try {
+            const stats = await fs.promises.statfs('/app/data'); 
+            const totalBytes = stats.blocks * stats.bsize;
+            const freeBytes = stats.bavail * stats.bsize;
+            const usedBytes = totalBytes - freeBytes;
+
+            serverTotal = (totalBytes / 1e9).toFixed(1);
+            serverUsed = (usedBytes / 1e9).toFixed(1);
+        } catch (fsErr) {
+            fastify.log.error("Lỗi statfs Server:", fsErr);
+            serverUsed = '?'; serverTotal = '?';
+        }
+
+        return {
+            status: 'success',
+            server: { usedGB: serverUsed, totalGB: serverTotal },
+            drive: { usedGB: driveUsed } // <-- Đã bỏ totalGB của Drive
+        };
+    } catch (err) {
+        fastify.log.error("Lỗi tổng quát API system-storage:", err);
+        return reply.code(500).send({ error: "Lỗi hệ thống khi lấy dữ liệu lưu trữ" });
+    }
+});
 
 fastify.get('/api/system-storage', async (request, reply) => {
     try {

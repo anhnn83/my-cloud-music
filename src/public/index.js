@@ -1,5 +1,5 @@
-// src/public/index.js - Version 5.6
-console.log("--- src/public/index.js - Version 5.6 ---");
+// src/public/index.js - Version 5.7
+console.log("--- src/public/index.js - Version 5.7 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -1429,9 +1429,9 @@ async function updateStorageUI() {
     if (navigator.storage && navigator.storage.estimate) {
         try {
             const estimate = await navigator.storage.estimate();
-            usedMB = Math.round(estimate.usage / (1024 * 1024));
-            quotaMB = Math.round(estimate.quota / (1024 * 1024));
-            localStr = `💻 Local: ${usedMB}/${quotaMB} MB`;
+            usedMB = Math.round(estimate.usage / (1024 * 1024 * 1024));
+            quotaMB = Math.round(estimate.quota / (1024 * 1024 * 1024));
+            localStr = `💻 Local: ${usedMB}/${quotaMB} GB`;
         } catch(e) {}
     }
     document.querySelectorAll('.dyn-local').forEach(el => el.innerText = localStr);
@@ -1442,7 +1442,7 @@ async function updateStorageUI() {
         if (res.ok) {
             const data = await res.json();
             const serverStr = `🖥️ Server: ${data.server.usedGB}/${data.server.totalGB} GB`;
-            const driveStr = `☁️ Drive: ${data.drive.usedGB}/${data.drive.totalGB} GB`;
+            const driveStr = `☁️ Drive: ${data.drive.usedGB} GB`;
             
             document.querySelectorAll('.dyn-server').forEach(el => el.innerText = serverStr);
             document.querySelectorAll('.dyn-drive').forEach(el => el.innerText = driveStr);
