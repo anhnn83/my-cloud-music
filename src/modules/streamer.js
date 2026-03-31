@@ -1,4 +1,5 @@
-// src/modules/streamer.js - Version 5.4
+// src/modules/streamer.js - Version 5.2 (Auto Delete Missing Files)
+
 const fs = require('fs');
 const path = require('path');
 const drive = require('./drive');
@@ -22,7 +23,7 @@ function isValidMp3Header(filePath) {
     } catch (e) { return false; }
 }
 
-async function getSongStream(songId, retryCount = 0, rangeHeader = null, signal = null) {
+async function getSongStream(songId, retryCount = 0) {
     const filename = `${songId}.mp3`;
     const filePath = path.join(CACHE_DIR, filename);
 
@@ -33,10 +34,11 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null, signal 
             console.log(`🗑️ File lỗi cache: ${songId}. Retry: ${retryCount}`);
             if (retryCount >= 1) {
                 try { fs.unlinkSync(filePath); } catch(e){}
+                // Nếu lỗi cache nặng, có thể file gốc cũng hỏng, nhưng tạm thời chỉ xóa cache
                 throw new Error('CORRUPT_FILE_ON_DRIVE');
             }
             try { fs.unlinkSync(filePath); } catch(e){}
-            return getSongStream(songId, retryCount + 1, rangeHeader, signal); 
+            return getSongStream(songId, retryCount + 1); 
         }
         return { type: 'file', filename: filename };
     }
@@ -50,7 +52,9 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null, signal 
                 supportsAllDrives: true 
             });
 
+            // [LOGIC 1] Nếu file nằm trong thùng rác -> Xóa khỏi DB ngay
             if (meta.data.trashed) {
+                console.log(`🗑️ File ${songId} nằm trong thùng rác Drive -> Xóa khỏi DB.`);
                 deleteSong.run(songId);
                 throw new Error('FILE_DELETED_ON_DRIVE');
             }
@@ -58,46 +62,26 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null, signal 
             const fileSize = meta.data.size ? parseInt(meta.data.size) : null;
             downloadInBackground(songId, fileSize);
 
-            const driveHeaders = { 'Accept-Encoding': 'identity' };
-            if (rangeHeader) {
-                driveHeaders['Range'] = rangeHeader;
-            }
-
-            // [SỬA] Truyền thuộc tính signal vào để Google API biết khi nào cần dừng
             const res = await drive.files.get(
                 { fileId: songId, alt: 'media', supportsAllDrives: true },
-                { responseType: 'stream', headers: driveHeaders, signal: signal }
+                { responseType: 'stream', headers: { 'Accept-Encoding': 'identity' } }
             );
-            
-            const responseHeaders = {
-                'Content-Type': 'audio/mpeg',
-                'Accept-Ranges': 'bytes'
-            };
-            
-            if (res.headers['content-range']) {
-                responseHeaders['Content-Range'] = res.headers['content-range'];
-            }
-            if (res.headers['content-length']) {
-                responseHeaders['Content-Length'] = res.headers['content-length'];
-            } else if (fileSize && !rangeHeader) {
-                responseHeaders['Content-Length'] = fileSize;
-            }
-            
+
             return {
                 type: 'stream',
                 stream: res.data,
-                headers: responseHeaders,
-                status: res.status
+                headers: {
+                    'Content-Type': 'audio/mpeg',
+                    'Content-Length': fileSize,
+                    'Accept-Ranges': 'bytes'
+                },
+                status: 200
             };
 
         } catch (error) {
-            // [MỚI] Bắt tín hiệu ngắt từ AbortController và ném ra lỗi tĩnh
-            if (error.name === 'AbortError' || (error.message && error.message.includes('canceled'))) {
-                throw new Error('CLIENT_ABORTED');
-            }
-
             console.error(`❌ Stream Error ${songId}:`, error.message);
             
+            // [LOGIC 2] Nếu lỗi 404 (Không tìm thấy trên Drive) -> Xóa khỏi DB ngay
             if (error.code === 404 || (error.response && error.response.status === 404)) {
                 console.log(`🗑️ File ${songId} không còn trên Drive (404) -> Xóa khỏi DB.`);
                 deleteSong.run(songId); 
@@ -109,6 +93,7 @@ async function getSongStream(songId, retryCount = 0, rangeHeader = null, signal 
 }
 
 async function preloadSong(songId) {
+    // ... (Giữ nguyên logic preload cũ)
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     if (fs.existsSync(filePath)) return; 
     try {
@@ -119,6 +104,7 @@ async function preloadSong(songId) {
 }
 
 async function downloadInBackground(songId, expectedSize) {
+    // ... (Giữ nguyên logic download cũ)
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     const tempPath = path.join(CACHE_DIR, `${songId}.temp`);
     if (fs.existsSync(tempPath) || fs.existsSync(filePath)) return;

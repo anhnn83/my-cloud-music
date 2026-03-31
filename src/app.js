@@ -1,8 +1,9 @@
-// src/app.js - Version 1.1
+// src/app.js - Version FINAL CLEAN
+// Ngày cập nhật: 2024 - Đã tối ưu hóa và làm sạch code
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
-fastify.register(require('@fastify/compress'));
+fastify.register(require('@fastify/compress')); // Nén Gzip để tải JSON nhanh hơn
 const path = require('path');
 const fs = require('fs');
 
@@ -30,6 +31,7 @@ fastify.register(require('@fastify/static'), {
     prefix: '/',
     setHeaders: (res, pathStr) => {
         if (pathStr.endsWith('sw.js')) {
+            // Không cache Service Worker để cập nhật phiên bản mới ngay lập tức
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -81,7 +83,7 @@ fastify.post('/api/login', async (request, reply) => {
             path: '/',
             httpOnly: true,
             signed: true,
-            maxAge: 365 * 24 * 60 * 60
+            maxAge: 365 * 24 * 60 * 60 // 365 ngày
         });
         return { status: 'success' };
     } else {
@@ -297,17 +299,7 @@ fastify.get('/stream/:id', async (request, reply) => {
     try {
         const songId = request.params.id;
         const range = request.headers.range;
-
-        // [MỚI] 1. Khởi tạo bộ điều khiển ngắt kết nối
-        const ac = new AbortController();
-        
-        // [MỚI] 2. Lắng nghe sự kiện trình duyệt ngắt kết nối đột ngột (tua nhạc, next bài)
-        request.raw.on('close', () => {
-            ac.abort(); // Gửi lệnh hủy ngay lập tức
-        });
-
-        // [SỬA] 3. Truyền thêm ac.signal vào tham số thứ 4
-        const result = await getSongStream(songId, 0, range, ac.signal);
+        const result = await getSongStream(songId);
 
         if (result.type === 'file') {
             const filePath = path.join(CACHE_ROOT, result.filename);
@@ -330,15 +322,12 @@ fastify.get('/stream/:id', async (request, reply) => {
                 return reply.send(fs.createReadStream(filePath));
             }
         } else {
-            reply.code(result.status); 
+            reply.code(result.status);
             Object.keys(result.headers).forEach(key => reply.header(key, result.headers[key]));
+            reply.header('Accept-Ranges', 'bytes');
             return reply.send(result.stream);
         }
     } catch (error) {
-        // [MỚI] 4. Xử lý êm đẹp khi Client chủ động ngắt, không in lỗi ra console
-        if (error.message === 'CLIENT_ABORTED') {
-            return reply.code(499).send(); // 499: Client Closed Request
-        }
         if (error.message === 'FILE_DELETED_ON_DRIVE') return reply.code(404).send({ error: 'File deleted' });
         reply.code(500).send("Stream Error");
     }
