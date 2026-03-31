@@ -1,5 +1,4 @@
-// src/app.js - Version FINAL CLEAN
-// Ngày cập nhật: 2024 - Đã tối ưu hóa và làm sạch code
+// src/app.js - Version 1.0
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -13,6 +12,8 @@ const { scanFolderRecursive, getScanStatus, scanNewFile } = require('./modules/s
 const { getSongStream, preloadSong } = require('./modules/streamer');
 const { cleanCache } = require('./modules/cacheCleaner');
 const { processDownload, getPreviewInfo, getStatus, stopDownload } = require('./modules/downloader-backend');
+const { execSync } = require('child_process');
+const drive = require('./modules/drive');
 
 // --- CẤU HÌNH ---
 const PORT = process.env.PORT || 3000;
@@ -31,7 +32,6 @@ fastify.register(require('@fastify/static'), {
     prefix: '/',
     setHeaders: (res, pathStr) => {
         if (pathStr.endsWith('sw.js')) {
-            // Không cache Service Worker để cập nhật phiên bản mới ngay lập tức
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -126,6 +126,58 @@ fastify.addHook('preHandler', async (request, reply) => {
         if (urlpath === '/downloader.html') return reply.redirect('/');
         reply.code(401).send({ error: 'Unauthorized: Vui lòng nhập PIN.' });
         return reply; 
+    }
+});
+
+// --- [MỚI] API LẤY DUNG LƯỢNG HỆ THỐNG (SERVER & DRIVE) ---
+function getServerStorage() {
+    try {
+        if (process.platform === 'win32') {
+            // Lấy ổ C trên Windows
+            const output = execSync('wmic logicaldisk where "DeviceID=\'C:\'" get FreeSpace,Size /format:csv').toString();
+            const lines = output.trim().split('\n');
+            if (lines.length > 1) {
+                const parts = lines[1].split(',');
+                const free = parseInt(parts[1]);
+                const size = parseInt(parts[2]);
+                return { usedGB: ((size - free) / 1e9).toFixed(1), totalGB: (size / 1e9).toFixed(1) };
+            }
+        } else {
+            // Lấy phân vùng gốc (/) trên Linux/Mac
+            const output = execSync('df -k /').toString();
+            const lines = output.trim().split('\n');
+            if (lines.length > 1) {
+                const parts = lines[1].replace(/\s+/g, ' ').split(' ');
+                const total = parseInt(parts[1]) * 1024;
+                const used = parseInt(parts[2]) * 1024;
+                return { usedGB: (used / 1e9).toFixed(1), totalGB: (total / 1e9).toFixed(1) };
+            }
+        }
+    } catch (e) { console.error("Lỗi đọc dung lượng Server:", e.message); }
+    return { usedGB: '?', totalGB: '?' };
+}
+
+fastify.get('/api/system-storage', async (request, reply) => {
+    try {
+        // 1. Lấy dữ liệu Google Drive
+        const driveAbout = await drive.about.get({ fields: 'storageQuota' });
+        const quota = driveAbout.data.storageQuota;
+        let driveUsed = '0', driveTotal = '15';
+        if (quota) {
+            driveUsed = (parseInt(quota.usage || 0) / 1e9).toFixed(1);
+            driveTotal = (parseInt(quota.limit || 15e9) / 1e9).toFixed(1);
+        }
+
+        // 2. Lấy dữ liệu Ổ cứng Server
+        const serverStorage = getServerStorage();
+
+        return {
+            status: 'success',
+            server: serverStorage,
+            drive: { usedGB: driveUsed, totalGB: driveTotal }
+        };
+    } catch (err) {
+        return reply.code(500).send({ error: "Lỗi lấy dữ liệu lưu trữ" });
     }
 });
 

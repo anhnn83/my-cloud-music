@@ -1,4 +1,4 @@
-/* scr/public/style.css - Version 2.0 (Final Optimized) */
+/* scr/public/style.css - Version 3.0 */
 
 /* =========================================
    1. BIẾN MÀU SẮC & CẤU HÌNH CHUNG
@@ -604,7 +604,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); backgrou
     display: flex;
     white-space: nowrap;        /* Không xuống dòng */
     /* Animation di chuyển giống hệt tên bài hát. 12s là tốc độ (chỉnh tùy thích) */
-    animation: header-seamless-scroll 12s linear infinite; 
+    animation: header-seamless-scroll 25s linear infinite; 
     box-sizing: border-box;
 }
 

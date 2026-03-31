@@ -1,5 +1,5 @@
-// src/public/index.js - Version 5.5
-console.log("--- src/public/index.js - Version 5.5 ---");
+// src/public/index.js - Version 5.6
+console.log("--- src/public/index.js - Version 5.6 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -51,7 +51,7 @@ async function init(isSilent = false) {
             }
         }
         allSongs = data.data; 
-        document.getElementById('count').innerText = data.total;
+        document.querySelectorAll('.dyn-count').forEach(el => el.innerText = data.total);
 
         // --- 2. Tạo Menu lọc (Dropdown) [CẬP NHẬT HIỂN THỊ SỐ LƯỢNG] ---
         const currentFilterVal = document.getElementById('folderFilter').value;
@@ -1420,22 +1420,40 @@ async function refreshServerCache(event, songId) {
 }
 
 // --- [MỚI] HỆ THỐNG QUẢN LÝ BỘ ĐỆM (BUFFER MANAGEMENT) ---
-
-// 1. Lấy thông tin dung lượng và cập nhật UI
+// 1. Lấy thông tin dung lượng Local, Server và Drive
 async function updateStorageUI() {
+    let usedMB = 0, quotaMB = 0;
+    
+    // A. Lấy Local Storage (RAM/Disk của trình duyệt)
+    let localStr = "💻 Local: ?/? MB";
     if (navigator.storage && navigator.storage.estimate) {
         try {
             const estimate = await navigator.storage.estimate();
-            const usedMB = Math.round(estimate.usage / (1024 * 1024));
-            const quotaMB = Math.round(estimate.quota / (1024 * 1024));
-            
-            const infoEl = document.getElementById('storageInfo');
-            if (infoEl) infoEl.innerText = `💻 ${usedMB}/${quotaMB} (MB)`;
-            
-            return { usedMB, quotaMB };
+            usedMB = Math.round(estimate.usage / (1024 * 1024));
+            quotaMB = Math.round(estimate.quota / (1024 * 1024));
+            localStr = `💻 Local: ${usedMB}/${quotaMB} MB`;
         } catch(e) {}
     }
-    return null;
+    document.querySelectorAll('.dyn-local').forEach(el => el.innerText = localStr);
+
+    // B. Lấy Server & Drive Storage từ Backend
+    try {
+        const res = await fetch('/api/system-storage');
+        if (res.ok) {
+            const data = await res.json();
+            const serverStr = `🖥️ Server: ${data.server.usedGB}/${data.server.totalGB} GB`;
+            const driveStr = `☁️ Drive: ${data.drive.usedGB}/${data.drive.totalGB} GB`;
+            
+            document.querySelectorAll('.dyn-server').forEach(el => el.innerText = serverStr);
+            document.querySelectorAll('.dyn-drive').forEach(el => el.innerText = driveStr);
+        }
+    } catch (e) {
+        console.warn("Đang Offline, không lấy được dung lượng Server/Drive");
+        document.querySelectorAll('.dyn-server').forEach(el => el.innerText = "🖥️ Server: Offline");
+        document.querySelectorAll('.dyn-drive').forEach(el => el.innerText = "☁️ Drive: Offline");
+    }
+
+    return { usedMB, quotaMB };
 }
 
 // 2. Hàm dọn dẹp các bài "Tạm" (Case C)
