@@ -1498,10 +1498,10 @@ async function silentDownloadNext(songId) {
             saveTempList();
             updateStorageUI();
         }
-        return true; // Tải thành công
+        return true;
     } catch (e) { 
         console.warn("Lỗi tải đệm ngầm:", e.message); 
-        return false; // Lỗi thì trả về false
+        return false;
     }
 }
 

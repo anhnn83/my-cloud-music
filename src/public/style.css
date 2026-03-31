@@ -572,3 +572,72 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); backgrou
 .meta-icon:hover {
     transform: scale(1.2); /* Phóng to nhẹ khi rê chuột */
 }
+
+/* =========================================
+   [MỚI] STYLE CHO CHỮ CHẠY VÔ TẬN Ở HEADER
+   ========================================= */
+
+/* 1. Khung hiển thị chính (Thay thế style cho .app-title) */
+.top-bar-center {
+    flex: 1.5; /* Ưu tiên không gian ở giữa */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 0; /* Fix lỗi flexbox không co */
+    overflow: hidden; /* Quan trọng: Giấu nội dung tràn */
+    position: relative;
+}
+
+.app-title-marquee {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+    
+    /* Hiệu ứng kính mờ/fade ở 2 mép cho đẹp */
+    mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+}
+
+/* 2. Wrapper do chứa 4 bản copy của nội dung */
+.header-marquee-wrapper {
+    display: flex;
+    white-space: nowrap;        /* Không xuống dòng */
+    /* Animation di chuyển giống hệt tên bài hát. 12s là tốc độ (chỉnh tùy thích) */
+    animation: header-seamless-scroll 12s linear infinite; 
+    box-sizing: border-box;
+}
+
+/* 3. Style cho từng cụm nội dung */
+.header-marquee-item {
+    display: flex;
+    align-items: center;
+    font-size: 1.15rem; /* Cập nhật size cho app-title */
+    font-weight: 700;
+    color: var(--light);
+    box-sizing: border-box;
+}
+
+/* Style riêng cho phần text dung lượng và Files */
+.storage-text, .storage-text-clone {
+    font-size: 0.75rem;
+    color: var(--primary); /* Xanh Spotify */
+    font-family: 'Consolas', monospace;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+/* Placeholder text cho các bản clone */
+.storage-text-clone { color: #555; } /* Màu tối hơn */
+.count-clone { color: var(--gray); font-weight: normal; font-size: 0.9em; }
+
+/* Media Query cho Mobile siêu nhỏ: Ẩn bớt chữ Files như trước */
+@media (max-width: 400px) {
+    .header-marquee-item .hide-on-mobile { display: none; }
+}
+
+/* 4. Định nghĩa chuyển động lặp vô tận (Logic: di chuyển -25%) */
+@keyframes header-seamless-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-25%); } /* Dịch chuyển đúng chiều dài 1 bản copy */
+}
