@@ -1,5 +1,5 @@
-// src/public/index.js - Version 5.2
-console.log("--- src/public/index.js - Version 5.2 ---");
+// src/public/index.js - Version 5.5
+console.log("--- src/public/index.js - Version 5.5 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -124,11 +124,7 @@ async function init(isSilent = false) {
 
         } else {
             // === SILENT UPDATE ===
-            let playingSongId = null;
-            if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
-                playingSongId = currentPlaylist[currentIndex].id;
-            }
-
+            let playingSongId = currentPlayingId;
             await filterPlaylist(); 
 
             if (playingSongId) {
@@ -366,17 +362,15 @@ audio.ontimeupdate = () => {
 
     document.getElementById('currTime').innerText = formatTime(audio.currentTime);
     seekBar.value = audio.currentTime;
-    
-    if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
-        const songId = currentPlaylist[currentIndex].id;
-        const songItem = document.getElementById(`song-${songId}`);
+
+    if (currentPlayingId) {
+        const songItem = document.getElementById(`song-${currentPlayingId}`);
         if (songItem) {
             const percent = (audio.currentTime / audio.duration) * 100;
             const bar = songItem.querySelector('.mini-progress-fill');
             if (bar) bar.style.width = `${percent}%`;
         }
     }
-
     // if ('mediaSession' in navigator) {
     //     try {
     //         navigator.mediaSession.setPositionState({
@@ -399,28 +393,30 @@ audio.ontimeupdate = () => {
         });
     }
 
-    if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentIndex !== -1) {
-        const song = currentPlaylist[currentIndex];
-        const currentFolder = document.getElementById('folderFilter').value;
-        song.current_time = audio.currentTime;
-        fetch('/api/progress', { 
-            method: 'POST', 
-            headers: {'Content-Type':'application/json'}, 
-            body: JSON.stringify({
-                songId: song.id, 
-                currentTime: audio.currentTime,
-                folder: currentFolder
-            }) 
-        }).catch(()=>{}); 
+    if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentPlayingId) {
+        const song = allSongs.find(s => s.id === currentPlayingId); // Tìm từ mảng gốc thay vì currentPlaylist
+        if (song) {
+            const currentFolder = document.getElementById('folderFilter').value;
+            song.current_time = audio.currentTime;
+            fetch('/api/progress', { 
+                method: 'POST', 
+                headers: {'Content-Type':'application/json'}, 
+                body: JSON.stringify({
+                    songId: song.id, 
+                    currentTime: audio.currentTime,
+                    folder: currentFolder
+                }) 
+            }).catch(()=>{}); 
+        }
     }
 };
 
-audio.onended = () => { 
-    if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
+audio.onended = () => {
+    if (currentPlayingId) {
         fetch('/api/trend/add', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ songId: currentPlaylist[currentIndex].id })
+            body: JSON.stringify({ songId: currentPlayingId })
         }).catch(()=>{}); 
     }
 
@@ -490,7 +486,9 @@ function formatTime(s) {
 
 // --- 6. CONTROLS ---
 function togglePlay() { 
-    if (currentIndex === -1 && currentPlaylist.length > 0) { playIndex(0); return; }
+    // [FIX] Chỉ phát bài mới (index 0) nếu thực sự CHƯA CÓ bài nào đang phát
+    if (!currentPlayingId && currentPlaylist.length > 0) { playIndex(0); return; }
+    
     if (audio.paused) { 
         audio.play().then(() => updatePlayBtn(true)).catch(e => { console.warn(e); updatePlayBtn(false); });
     } else { 
@@ -553,10 +551,8 @@ function seekAudio() {
 
 // [MỚI] Hàm xử lý khi bấm nút Download trên Player
 function toggleDownloadCurrent() {
-    if (currentIndex !== -1 && currentPlaylist[currentIndex]) {
-        const song = currentPlaylist[currentIndex];
-        // Gọi lại hàm toggleDownload cũ nhưng truyền dummy event
-        toggleDownload({ stopPropagation: () => {} }, song.id);
+    if (currentPlayingId) {
+        toggleDownload({ stopPropagation: () => {} }, currentPlayingId);
     }
 }
 
@@ -571,7 +567,7 @@ async function toggleDownload(event, songId) {
     const btnList = document.getElementById(`btn-dl-${songId}`);
     // 2. Nút trên player (nếu đang phát bài này)
     const btnPlayer = document.getElementById('playerDownload');
-    const isPlayingCurrent = (currentIndex !== -1 && currentPlaylist[currentIndex]?.id === songId);
+    const isPlayingCurrent = (currentPlayingId === songId);
 
     if (typeof OfflineDB === 'undefined') {
         alert("Trình duyệt không hỗ trợ lưu Offline!");
@@ -762,6 +758,16 @@ async function downloadAllInCurrentPlaylist() {
                 btnList.disabled = false;
                 btnList.title = 'Đã tải (Nhấn để xóa)';
             }
+            
+            // [BỔ SUNG VÁ LỖI TẠI ĐÂY] Đồng bộ nút trên thanh Player nếu đang phát đúng bài này
+            if (currentPlayingId === song.id) {
+                const btnPlayer = document.getElementById('playerDownload');
+                if (btnPlayer) {
+                    btnPlayer.innerText = '✅';
+                    btnPlayer.style.color = '#1db954';
+                }
+            }
+            
             successCount++;
         } catch (e) {
             console.error(`Lỗi tải bài [${song.name}]:`, e);
@@ -821,15 +827,21 @@ function toggleFavorite(event, songId) {
 
             if (document.getElementById('folderFilter').value === 'favorites' && !song.is_favorite) {
                 currentPlaylist = currentPlaylist.filter(s => s.id !== songId);
+                finishFilter(); // [FIX] Bắt buộc gọi finishFilter để đồng bộ lại currentIndex
+            } else {
+                renderPlaylist();
             }
-            renderPlaylist();
-            if (currentIndex !== -1 && currentPlaylist[currentIndex].id === songId) updatePlayerHeart(song.is_favorite);
+            
+            // [FIX] Check UI dựa trên currentPlayingId
+            if (currentPlayingId === songId) updatePlayerHeart(song.is_favorite);
         })
         .catch(err => console.error("Lỗi toggle favorite:", err));
 }
 
 function toggleFavoriteCurrent() {
-    if (currentIndex !== -1) toggleFavorite({ stopPropagation: () => {} }, currentPlaylist[currentIndex].id);
+    if (currentPlayingId) {
+        toggleFavorite({ stopPropagation: () => {} }, currentPlayingId);
+    }
 }
 
 function updatePlayerHeart(isFav) {
@@ -1367,9 +1379,28 @@ async function refreshServerCache(event, songId) {
                 iconSpan.innerText = '🚫';
                 iconSpan.title = 'Server đang tải lại file mới...';
             }
-
+            if (typeof OfflineDB !== 'undefined') {
+                const isDL = await OfflineDB.isDownloaded(songId);
+                if (isDL) {
+                    await OfflineDB.deleteSong(songId);
+                    console.log("Đã xóa bản Offline cũ do Server vừa cập nhật Cache mới.");
+                    const btnList = document.getElementById(`btn-dl-${songId}`);
+                    if (btnList) {
+                        btnList.innerText = '⬇️';
+                        btnList.classList.remove('downloaded');
+                        btnList.title = 'Tải Offline';
+                    }
+                    if (currentPlayingId === songId) {
+                        const btnPlayer = document.getElementById('playerDownload');
+                        if (btnPlayer) {
+                            btnPlayer.innerText = '⬇️';
+                            btnPlayer.style.color = 'inherit';
+                        }
+                    }
+                }
+            }
             // --- 3. NẾU ĐANG PHÁT BÀI NÀY -> CẬP NHẬT PLAYER ---
-            if (currentIndex !== -1 && currentPlaylist[currentIndex].id === songId) {
+            if (currentPlayingId === songId) {
                 const totalTimeEl = document.getElementById('totalTime');
                 const seekBar = document.getElementById('seekBar');
                 if (totalTimeEl) totalTimeEl.innerText = formatTime(newSongData.duration);
