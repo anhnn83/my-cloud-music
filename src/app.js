@@ -172,30 +172,6 @@ fastify.get('/api/system-storage', async (request, reply) => {
     }
 });
 
-fastify.get('/api/system-storage', async (request, reply) => {
-    try {
-        // 1. Lấy dữ liệu Google Drive
-        const driveAbout = await drive.about.get({ fields: 'storageQuota' });
-        const quota = driveAbout.data.storageQuota;
-        let driveUsed = '0', driveTotal = '15';
-        if (quota) {
-            driveUsed = (parseInt(quota.usage || 0) / 1e9).toFixed(1);
-            driveTotal = (parseInt(quota.limit || 15e9) / 1e9).toFixed(1);
-        }
-
-        // 2. Lấy dữ liệu Ổ cứng Server
-        const serverStorage = getServerStorage();
-
-        return {
-            status: 'success',
-            server: serverStorage,
-            drive: { usedGB: driveUsed, totalGB: driveTotal }
-        };
-    } catch (err) {
-        return reply.code(500).send({ error: "Lỗi lấy dữ liệu lưu trữ" });
-    }
-});
-
 // ============================================================
 // CÁC TÍNH NĂNG CHÍNH
 // ============================================================
