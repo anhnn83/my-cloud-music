@@ -31,14 +31,23 @@
     </div>
 
     <div class="header">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 15px;">
-            <button class="btn-icon-only" onclick="toggleDownloaderView()" id="btnDownloadView" title="Tải nhạc mới">⬇️</button>
-            <h2 style="font-size: 1.2rem; margin: 0; cursor: pointer;" onclick="location.reload()" title="Tải lại trang">
-                ☁️ N.Anh's Music (<span id="count">0</span>)
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; width: 100%; white-space: nowrap; overflow: hidden;">
+            
+            <button class="btn-icon-only" onclick="toggleDownloaderView()" id="btnDownloadView" title="Tải nhạc mới" 
+                style="display: flex; align-items: center; gap: 4px; font-size: 0.9rem; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 20px;">
+                ⬇️ <span id="storageInfo" style="font-size: 0.75rem; color: #aaa; font-weight: normal;">...</span>
+            </button>
+            
+            <h2 style="font-size: 1.1rem; margin: 0; cursor: pointer; text-overflow: ellipsis; overflow: hidden; max-width: 50%;" 
+                onclick="location.reload()" title="Tải lại trang">
+                ☁️ <span id="count">0</span> Files
             </h2>
-            <button class="btn-icon-only" onclick="updateLibrary()" id="btnScan" title="Cập nhật" style="width: 30px; height: 30px; font-size: 1rem;">
+            
+            <button class="btn-icon-only" onclick="updateLibrary()" id="btnScan" title="Cập nhật" 
+                style="width: 30px; height: 30px; font-size: 1rem; flex-shrink: 0;">
                 <span id="scanIcon">🔄</span>
             </button>
+            
         </div>
         
         <div class="controls-top">

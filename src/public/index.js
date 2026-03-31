@@ -1,5 +1,5 @@
-// src/public/index.js - Version 4.5
-console.log("--- src/public/index.js - Version 4.5 ---");
+// src/public/index.js - Version 4.6
+console.log("--- src/public/index.js - Version 4.6 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -10,11 +10,18 @@ const seekBar = document.getElementById('seekBar');
 // Biến cho tính năng Preload (Tải trước)
 let pendingNextIndex = -1;
 let isPreloaded = false;
+let tempPreloadIds = JSON.parse(localStorage.getItem('temp_preloads') || '[]');
+
+function saveTempList() {
+    localStorage.setItem('temp_preloads', JSON.stringify(tempPreloadIds));
+}
 
 // --- 1. KHỞI TẠO ---
 window.init = init;
 
 async function init(isSilent = false) {
+    cleanupTempPreloads(null, null);
+    updateStorageUI();
     try {
         let data;
         let isOfflineMode = false;
@@ -270,82 +277,16 @@ function prepareNextSong() {
 }
 
 // --- 3. CORE: LOAD & PLAY SONG (OFFLINE UPGRADE) ---
-// async function loadSong(song, autoPlay = true) {
-//     updatePlayerUI(song);
-//     updateMediaSession(song);
-//     isPreloaded = false;
-//     prepareNextSong();
 
-//     audio.pause();
-//     audio.onloadedmetadata = null;
-//     audio.onerror = null;
-
-//     // [OFFLINE UPDATE] Kiểm tra xem bài hát có trong IndexedDB không
-//     let isPlayingOffline = false;
-//     if (typeof OfflineDB !== 'undefined') {
-//         const offlineBlob = await OfflineDB.getSong(song.id);
-//         if (offlineBlob) {
-//             console.log("📂 Playing from Offline DB:", song.name);
-//             const url = URL.createObjectURL(offlineBlob);
-//             audio.src = url;
-//             isPlayingOffline = true;
-//         }
-//     }
-
-//     // Nếu không có offline, stream từ server như bình thường
-//     if (!isPlayingOffline) {
-//         console.log("☁️ Playing from Server:", song.name);
-//         audio.src = `/stream/${song.id}?t=${Date.now()}`;
-//     }
-
-//     // Áp dụng lại tốc độ phát
-//     audio.playbackRate = currentSpeed;
-
-//     audio.onloadedmetadata = () => {
-//         const cbStart = document.getElementById('cbPlayFromStart').checked;
-//         const cbSkip = document.getElementById('cbSkipMode').checked;
-//         const skipStartVal = parseInt(document.getElementById('inpSkipStart').value) || 0;
-
-//         let startTime = 0;
-//         if (!cbStart && song.current_time && song.current_time > 5 && song.current_time < song.duration - 5) {
-//             startTime = song.current_time;
-//         }
-
-//         if (cbSkip) {
-//             if (startTime < skipStartVal) startTime = skipStartVal;
-//         }
-
-//         audio.currentTime = startTime;
-        
-//         if(autoPlay) {
-//             var playPromise = audio.play();
-//             if (playPromise !== undefined) {
-//                 playPromise
-//                     .then(() => updatePlayBtn(true))
-//                     .catch(e => {
-//                         console.warn("Autoplay blocked:", e);
-//                         updatePlayBtn(false);
-//                     });
-//             }
-//         }
-//     };
-
-//     audio.onerror = (e) => {
-//         console.error("Lỗi phát bài hát:", song.name, audio.error);
-//         updatePlayBtn(false);
-//     };
-    
-//     audio.load();
-// }
-
-// src/public/index.js
-
-// [FIX iOS PWA - V3] Hàm loadSong tối ưu hóa cho Background Audio
 async function loadSong(song, autoPlay = true) {
     updatePlayerUI(song);
     updateMediaSession(song);
     isPreloaded = false;
     prepareNextSong();
+
+    // [MỚI] Dọn dẹp các bài tải ngầm mà user đã skip (Case C)
+    const nextSongId = pendingNextIndex !== -1 ? currentPlaylist[pendingNextIndex]?.id : null;
+    cleanupTempPreloads(song.id, nextSongId);
 
     // 1. Dọn dẹp URL cũ để tránh rò rỉ bộ nhớ trên iOS
     if (audio.src && audio.src.startsWith('blob:')) {
@@ -712,6 +653,13 @@ async function toggleDownload(event, songId) {
             const blob = await res.blob();
             
             await OfflineDB.saveSong(songId, blob);
+
+            // [MỚI] Chuyển từ "Tạm" sang "Vĩnh viễn" (Case B)
+            if (tempPreloadIds.includes(songId)) {
+                tempPreloadIds = tempPreloadIds.filter(id => id !== songId);
+                saveTempList();
+            }
+            updateStorageUI();
             
             updateUI('done', '✅', '✅', 'Đã tải (Nhấn để xóa)');
             showStatus("💾 Đã tải xong! Có thể nghe Offline.", 2000);
@@ -1494,6 +1442,88 @@ async function refreshServerCache(event, songId) {
     } finally {
         iconSpan.style.cursor = 'pointer';
     }
+}
+
+// --- [MỚI] HỆ THỐNG QUẢN LÝ BỘ ĐỆM (BUFFER MANAGEMENT) ---
+
+// 1. Lấy thông tin dung lượng và cập nhật UI
+async function updateStorageUI() {
+    if (navigator.storage && navigator.storage.estimate) {
+        try {
+            const estimate = await navigator.storage.estimate();
+            const usedMB = Math.round(estimate.usage / (1024 * 1024));
+            const quotaMB = Math.round(estimate.quota / (1024 * 1024));
+            
+            const infoEl = document.getElementById('storageInfo');
+            if (infoEl) infoEl.innerText = `${usedMB}/${quotaMB}`;
+            
+            return { usedMB, quotaMB };
+        } catch(e) {}
+    }
+    return null;
+}
+
+// 2. Hàm dọn dẹp các bài "Tạm" (Case C)
+async function cleanupTempPreloads(currentId, nextId) {
+    if (typeof OfflineDB === 'undefined') return;
+
+    const toDelete = tempPreloadIds.filter(id => id !== currentId && id !== nextId);
+
+    for (const id of toDelete) {
+        try {
+            await OfflineDB.deleteSong(id);
+            tempPreloadIds = tempPreloadIds.filter(tid => tid !== id);
+            console.log(`🧹 Đã xóa bộ đệm: ${id}`);
+        } catch (e) {}
+    }
+    saveTempList();
+    updateStorageUI();
+}
+
+// 3. Hàm xóa sạch toàn bộ Temp (Khi đầy bộ nhớ)
+async function clearAllTempFiles() {
+    for (const id of tempPreloadIds) {
+        try { await OfflineDB.deleteSong(id); } catch(e){}
+    }
+    tempPreloadIds = [];
+    saveTempList();
+    console.log("🔥 Đã dọn dẹp khẩn cấp toàn bộ file tạm.");
+}
+
+// 4. Hàm tải đệm (Silent Download - Case A & B)
+async function silentDownloadNext(songId) {
+    if (typeof OfflineDB === 'undefined' || !navigator.onLine) return;
+
+    const isDownloaded = await OfflineDB.isDownloaded(songId);
+    if (isDownloaded && !tempPreloadIds.includes(songId)) return;
+
+    try {
+        const storage = await updateStorageUI();
+        // Nếu bộ nhớ chỉ còn dưới 50MB, không cho phép tải đệm nữa
+        if (storage && (storage.quotaMB - storage.usedMB) < 50) {
+            console.warn("⚠️ Bộ nhớ gần đầy, bỏ qua tải đệm.");
+            return;
+        }
+
+        const res = await fetch(`/stream/${songId}`);
+        if (!res.ok) return;
+        const blob = await res.blob();
+        
+        try {
+            await OfflineDB.saveSong(songId, blob);
+        } catch (dbError) {
+            if (dbError.name === 'QuotaExceededError') {
+                await clearAllTempFiles();
+                await OfflineDB.saveSong(songId, blob); // Thử lưu lại
+            } else throw dbError;
+        }
+
+        if (!tempPreloadIds.includes(songId)) {
+            tempPreloadIds.push(songId);
+            saveTempList();
+            updateStorageUI();
+        }
+    } catch (e) { console.warn("Lỗi tải đệm ngầm:", e.message); }
 }
 
 document.addEventListener('keydown', e => {
