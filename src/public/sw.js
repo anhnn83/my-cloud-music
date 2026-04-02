@@ -1,5 +1,5 @@
 // src/public/sw.js
-const CACHE_NAME = 'music-app-shell-v2.1';
+const CACHE_NAME = 'music-app-shell-v3'; // Tăng lên v3 để reset lại bộ đệm
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -16,14 +16,14 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching App Shell');
+      console.log('[SW] Caching App Shell v3');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
   self.skipWaiting();
 });
 
-// 2. Activate: Xóa cache cũ nếu update version mới
+// 2. Activate: Xóa cache cũ
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keyList) => {
@@ -40,36 +40,37 @@ self.addEventListener('activate', (event) => {
 
 // 3. Fetch: Áp dụng Stale-While-Revalidate
 self.addEventListener('fetch', (event) => {
-  // KHÔNG cache các API động và luồng stream nhạc
+  // [VÁ LỖI 1] BỎ QUA NGAY LẬP TỨC các request từ Chrome Extension (chỉ lấy http/https)
+  if (!event.request.url.startsWith('http')) {
+    return;
+  }
+
+  // Bỏ qua các API động và luồng stream nhạc
   if (event.request.url.includes('/api/') || event.request.url.includes('/stream/')) {
     return; 
   }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // Ngầm gọi server tải bản cập nhật mới (nếu có mạng)
       const fetchPromise = fetch(event.request).then((networkResponse) => {
-        // [VÁ LỖI 1] Phải CLONE dữ liệu ngay lập tức trước khi mở Cache (bất đồng bộ)
+        // Chỉ lưu Cache nếu fetch thành công VÀ là file của chính trang web (type === 'basic')
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone(); // <--- Clone ở đây
-          
+          const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
           });
         }
         return networkResponse;
       }).catch((err) => {
-        // [VÁ LỖI 2] Bắt lỗi khi rớt mạng hoặc bị Adblock chặn (Cloudflare)
-        console.log('[SW] Không thể fetch (Offline hoặc bị block):', event.request.url);
+        // [VÁ LỖI 2] Nuốt trôi lỗi khi rớt mạng hoặc bị Adblock chặn Cloudflare
+        console.log('[SW] Yêu cầu bị chặn hoặc Offline:', event.request.url);
         
-        // Nếu trong Cache KHÔNG CÓ file này, bắt buộc phải throw error để trình duyệt không bị lỗi "Failed to convert"
+        // Nếu file này không có sẵn trong Cache, trả về Response.error() ảo thay vì throw gây đỏ console
         if (!cachedResponse) {
-            throw err; 
+            return Response.error(); 
         }
       });
 
-      // Trả về file từ Cache ngay lập tức để app khởi động nhanh.
-      // Nếu Cache chưa có (lần đầu), mới đợi fetchPromise từ mạng.
       return cachedResponse || fetchPromise;
     })
   );
