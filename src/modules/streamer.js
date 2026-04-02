@@ -1,4 +1,4 @@
-// src/modules/streamer.js - Version 5.2 (Auto Delete Missing Files)
+// src/modules/streamer.js - Version 5.3
 
 const fs = require('fs');
 const path = require('path');
@@ -23,7 +23,7 @@ function isValidMp3Header(filePath) {
     } catch (e) { return false; }
 }
 
-async function getSongStream(songId, retryCount = 0) {
+async function getSongStream(songId, rangeHeader = null, retryCount = 0) {
     const filename = `${songId}.mp3`;
     const filePath = path.join(CACHE_DIR, filename);
 
@@ -46,25 +46,21 @@ async function getSongStream(songId, retryCount = 0) {
     // CASE 2: STREAM TỪ DRIVE
     else {
         try {
-            const meta = await drive.files.get({ 
-                fileId: songId, 
-                fields: 'size, trashed',
-                supportsAllDrives: true 
-            });
-
-            // [LOGIC 1] Nếu file nằm trong thùng rác -> Xóa khỏi DB ngay
-            if (meta.data.trashed) {
-                console.log(`🗑️ File ${songId} nằm trong thùng rác Drive -> Xóa khỏi DB.`);
-                deleteSong.run(songId);
-                throw new Error('FILE_DELETED_ON_DRIVE');
-            }
-
+            const meta = await drive.files.get({ fileId: songId, fields: 'size, trashed', supportsAllDrives: true });
+            if (meta.data.trashed) { deleteSong.run(songId); throw new Error('FILE_DELETED_ON_DRIVE'); }
+            
             const fileSize = meta.data.size ? parseInt(meta.data.size) : null;
             downloadInBackground(songId, fileSize);
 
+            // [VÁ LỖI] Chuyển tiếp tọa độ Tua (Range) cho Google Drive
+            const driveHeaders = { 'Accept-Encoding': 'identity' };
+            if (rangeHeader) {
+                driveHeaders['Range'] = rangeHeader;
+            }
+
             const res = await drive.files.get(
                 { fileId: songId, alt: 'media', supportsAllDrives: true },
-                { responseType: 'stream', headers: { 'Accept-Encoding': 'identity' } }
+                { responseType: 'stream', headers: driveHeaders }
             );
 
             return {
@@ -72,10 +68,11 @@ async function getSongStream(songId, retryCount = 0) {
                 stream: res.data,
                 headers: {
                     'Content-Type': 'audio/mpeg',
-                    'Content-Length': fileSize,
+                    'Content-Length': res.headers['content-length'] || fileSize,
+                    'Content-Range': res.headers['content-range'], // Chuyển tiếp cự ly
                     'Accept-Ranges': 'bytes'
                 },
-                status: 200
+                status: res.status // Sẽ trả về 206 Partial Content để điện thoại hiểu là đang Tua
             };
 
         } catch (error) {
@@ -93,7 +90,6 @@ async function getSongStream(songId, retryCount = 0) {
 }
 
 async function preloadSong(songId) {
-    // ... (Giữ nguyên logic preload cũ)
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     if (fs.existsSync(filePath)) return; 
     try {

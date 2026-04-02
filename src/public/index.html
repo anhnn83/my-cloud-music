@@ -276,7 +276,7 @@
         </div>
         <div class="progress-container">
             <span id="currTime">0:00</span>
-            <input type="range" id="seekBar" value="0" min="0" step="1" oninput="seekAudio()">
+            <input type="range" id="seekBar" value="0" min="0" step="1" oninput="previewSeek()" onchange="commitSeek()">
             <span id="totalTime">0:00</span>
         </div>
         <div class="audio-controls">

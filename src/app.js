@@ -1,4 +1,4 @@
-// src/app.js - Version 1.1
+// src/app.js - Version 1.2
 
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
@@ -342,7 +342,7 @@ fastify.get('/stream/:id', async (request, reply) => {
     try {
         const songId = request.params.id;
         const range = request.headers.range;
-        const result = await getSongStream(songId);
+        const result = await getSongStream(songId, range);
 
         if (result.type === 'file') {
             const filePath = path.join(CACHE_ROOT, result.filename);
@@ -366,7 +366,11 @@ fastify.get('/stream/:id', async (request, reply) => {
             }
         } else {
             reply.code(result.status);
-            Object.keys(result.headers).forEach(key => reply.header(key, result.headers[key]));
+            Object.keys(result.headers).forEach(key => {
+                if (result.headers[key]) {
+                    reply.header(key, result.headers[key]);
+                }
+            });
             reply.header('Accept-Ranges', 'bytes');
             return reply.send(result.stream);
         }

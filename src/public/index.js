@@ -1,5 +1,5 @@
-// src/public/index.js - Version 5.9
-console.log("--- src/public/index.js - Version 5.9 ---");
+// src/public/index.js - Version 6.0
+console.log("--- src/public/index.js - Version 6.0 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -11,6 +11,7 @@ const seekBar = document.getElementById('seekBar');
 // Biến cho tính năng Preload (Tải trước)
 let pendingNextIndex = -1;
 let isPreloaded = false;
+let lastSavedSecond = -1;
 let tempPreloadIds = JSON.parse(localStorage.getItem('temp_preloads') || '[]');
 
 function saveTempList() {
@@ -354,9 +355,11 @@ audio.ontimeupdate = () => {
             return; 
         }
     }
-
-    document.getElementById('currTime').innerText = formatTime(audio.currentTime);
-    seekBar.value = audio.currentTime;
+    // 1. [VÁ LỖI TUA] Chỉ cho thanh trượt chạy nếu user KHÔNG cầm tay vào kéo
+    if (!isDraggingSeekbar) {
+        document.getElementById('currTime').innerText = formatTime(audio.currentTime);
+        seekBar.value = audio.currentTime;
+    }
 
     if (currentPlayingId) {
         const songItem = document.getElementById(`song-${currentPlayingId}`);
@@ -366,30 +369,26 @@ audio.ontimeupdate = () => {
             if (bar) bar.style.width = `${percent}%`;
         }
     }
-    // if ('mediaSession' in navigator) {
-    //     try {
-    //         navigator.mediaSession.setPositionState({
-    //             duration: audio.duration,
-    //             playbackRate: audio.playbackRate,
-    //             position: audio.currentTime
-    //         });
-    //     } catch (e) {}
-    // }
     
+    // 2. [VÁ LỖI NÓNG MÁY] Khóa luồng ngay lập tức khi gọi Tải đệm ngầm
     if (!isPreloaded && pendingNextIndex !== -1 && (audio.currentTime / audio.duration > 0.7)) {
+        isPreloaded = true; // KHÓA CỔNG (Tránh 12 luồng chạy đè lên nhau)
+        
         const nextSong = currentPlaylist[pendingNextIndex];
         if (!audio.src.startsWith('blob:')) {
              fetch(`/api/preload/${nextSong.id}`).catch(()=>{});
         }
         silentDownloadNext(nextSong.id).then(success => {
-            if (success) {
-                isPreloaded = true; 
-            }
+            if (!success) isPreloaded = false; // Mở khóa nếu lỗi để tải lại sau
         });
     }
 
-    if (Math.floor(audio.currentTime) % 5 === 0 && isPlaying && currentPlayingId) {
-        const song = allSongs.find(s => s.id === currentPlayingId); // Tìm từ mảng gốc thay vì currentPlaylist
+    // 3. [VÁ LỖI SPAM API] Chỉ gửi 1 request mỗi giây (Bỏ qua mili-giây)
+    let currentSec = Math.floor(audio.currentTime);
+    if (currentSec % 5 === 0 && currentSec !== lastSavedSecond && isPlaying && currentPlayingId) {
+        lastSavedSecond = currentSec; // Ghi sổ đã gửi
+        
+        const song = allSongs.find(s => s.id === currentPlayingId);
         if (song) {
             const btn = document.getElementById('btnFolderSelect');
             const currentFolder = btn ? btn.getAttribute('data-value') : 'all';
@@ -397,11 +396,7 @@ audio.ontimeupdate = () => {
             fetch('/api/progress', { 
                 method: 'POST', 
                 headers: {'Content-Type':'application/json'}, 
-                body: JSON.stringify({
-                    songId: song.id, 
-                    currentTime: audio.currentTime,
-                    folder: currentFolder
-                }) 
+                body: JSON.stringify({ songId: song.id, currentTime: audio.currentTime, folder: currentFolder }) 
             }).catch(()=>{}); 
         }
     }
@@ -539,9 +534,16 @@ function toggleLoop() {
     savePlaybackSettings(); 
 }
 
-function seekAudio() { 
+let isDraggingSeekbar = false;
+
+function previewSeek() { 
+    isDraggingSeekbar = true;
+    document.getElementById('currTime').innerText = formatTime(seekBar.value);
+}
+
+function commitSeek() { 
     audio.currentTime = seekBar.value; 
-    document.getElementById('currTime').innerText = formatTime(audio.currentTime);
+    isDraggingSeekbar = false;
     updatePositionState();
 }
 
