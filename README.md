@@ -6,6 +6,8 @@
 [![Tunnel](https://img.shields.io/badge/Network-Cloudflare%20Tunnel-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#)
 [![Docker](https://img.shields.io/badge/Deploy-Docker%20Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](#)
 
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/cronpostps/my-cloud-music)
+
 > **My Cloud Music** là hệ thống máy chủ phát nhạc, truyện và sách nói cá nhân, kết hợp với giao diện Web App (PWA) hiện đại. Hệ thống cho phép bạn đồng bộ nhạc từ Google Drive, tải nhạc trực tiếp từ YouTube, và đặc biệt là khả năng nghe nhạc/quản lý bộ nhớ Offline hoàn hảo trên các thiết bị di động. 
 > *Dự án được tối ưu hóa đặc biệt cho sở thích nghe sách/truyện của tác giả (tự động lưu tiến độ, cắt intro/outro, chỉnh tốc độ phát...).* 😁
 
@@ -104,17 +106,18 @@ Docker sẽ tự động kích hoạt 2 dịch vụ song song: Máy chủ ứng 
 
 ---
 
-## ☎️ 5. Liên hệ với tác giả
+## ☎️ 5. Đóng góp & Mã nguồn mở
 
-**Nguyễn Ngọc Anh**
+**Mọi đóng góp, tối ưu code & báo lỗi đều được hoan nghênh tại kho lưu trữ chính thức!**
 
-➤ **Telegram:** [t.me/anhnn83](https://t.me/anhnn83)
+**👨‍💻 Dev by ANHNN**
 
-✉ **Email:** [anhnn@dgd.vn](mailto:anhnn@dgd.vn)
+[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/anhnn83)
+[![Email](https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:anhnn@dgd.vn)
+[![website](https://img.shields.io/badge/Website-anhnn.cronpost.com-181717?style=for-the-badge&logo=google-chrome&logoColor=white)](https://anhnn.cronpost.com)
 
-## License
-Dự án này được cấp phép theo các điều khoản của [GNU General Public License v3.0](LICENSE). Tất cả các tệp mã nguồn trong kho lưu trữ này đều thuộc phạm vi áp dụng của giấy phép này trừ khi có tuyên bố khác.
-
-Mã nguồn gốc © [My Cloud Music by anhnn](https://github.com/cronpostps/my-cloud-music)
-
-Xem thêm các dự án do [anhnn](https://t.me/anhnn83) dev tại [anhnn.cronpost.com](https://anhnn.cronpost.com)
+<hr>
+<div align="center">
+  &copy; 2026 <a href="https://github.com/cronpostps">anhnn</a>. Mọi quyền được bảo lưu.<br>
+  <b>My Cloud Music</b> được phát hành dưới giấy phép <a href="LICENSE">GNU GPLv3</a>.
+</div>
