@@ -69,14 +69,14 @@ async function getPreviewInfo(url) {
             noWarnings: true,
             // yesPlaylist: isPlaylistUrl,
             flatPlaylist: true,
-            // extractorArgs: 'youtube:player_client=android',
+            extractorArgs: 'youtube:player_client=android.web',
             jsRuntimes: 'node',
             impersonate: 'chrome-110', 
             noCheckCertificates: true,
             forceIpv4: true,
             // username: 'oauth2',
             // password: ''
-            cookies: '/app/cookies.txt'
+            // cookies: '/app/cookies.txt'
         };
 
         const rawOutput = await yt(url, ytArgs, { ytDlpBinaryPath: YTDLP_PATH });
@@ -176,7 +176,7 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             embedThumbnail: true, addMetadata: true, 
             output: outputTemplate,
             noPlaylist: true,
-            extractorArgs: 'youtube:player_client=android', 
+            // extractorArgs: 'youtube:player_client=android', 
             jsRuntimes: 'node',
             impersonate: 'chrome-110', 
             noCheckCertificates: true,
@@ -188,7 +188,7 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             maxSleepInterval: 15, // Nghỉ tối đa 15 giây (random khoảng 5-15s để giống người thật)
             // username: 'oauth2',
             // password: ''
-            // cookies: '/app/cookies.txt'
+            cookies: '/app/cookies.txt'
         };
 
         if (formatId) {
