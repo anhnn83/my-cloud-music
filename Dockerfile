@@ -34,5 +34,7 @@ COPY package*.json ./
 RUN npm install --production
 COPY . .
 
+ENV YTDLP_PATH=/usr/local/bin/yt-dlp
+
 EXPOSE 3000
 CMD ["node", "src/app.js"]
