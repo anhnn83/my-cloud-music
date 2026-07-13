@@ -26,15 +26,13 @@ RUN ln -s /usr/bin/python3 /usr/bin/python && \
 # 3. Cài đặt yt-dlp + curl-cffi
 # - curl-cffi: Hỗ trợ tính năng impersonate
 # - yt-dlp[default]: Cài đầy đủ modules
-RUN pip3 install --no-cache-dir -U "yt-dlp[default,curl-cffi]" pycryptodomex mutagen brotli certifi --break-system-packages
+RUN pip3 install --no-cache-dir "yt-dlp[default,curl-cffi]" pycryptodomex mutagen brotli certifi --break-system-packages
 
 # 4. Setup App
 RUN mkdir -p /app/temp_downloads && chmod 777 /app/temp_downloads
 COPY package*.json ./
 RUN npm install --production
 COPY . .
-
-ENV YTDLP_PATH=/usr/local/bin/yt-dlp
 
 EXPOSE 3000
 CMD ["node", "src/app.js"]

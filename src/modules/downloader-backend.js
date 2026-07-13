@@ -183,9 +183,9 @@ async function processSingleItem(item, index, existingFileNamesLower, formatId =
             forceIpv4: true,
             concurrentFragments: DOWNLOAD_FRAGMENTS,
             retries: 10,
-            // sleepRequests: 3,     // Nghỉ 3 giây giữa các request
-            // minSleepInterval: 5,  // Nghỉ tối thiểu 5 giây trước khi tải video tiếp theo
-            // maxSleepInterval: 15, // Nghỉ tối đa 15 giây (random khoảng 5-15s để giống người thật)
+            sleepRequests: 3,     // Nghỉ 3 giây giữa các request
+            minSleepInterval: 5,  // Nghỉ tối thiểu 5 giây trước khi tải video tiếp theo
+            maxSleepInterval: 15, // Nghỉ tối đa 15 giây (random khoảng 5-15s để giống người thật)
             // username: 'oauth2',
             // password: ''
             cookies: '/app/cookies.txt'
