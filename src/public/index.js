@@ -1,5 +1,5 @@
-// src/public/index.js - Version 6.1
-console.log("--- src/public/index.js - Version 6.1 ---");
+// src/public/index.js - Version 6.2
+console.log("--- src/public/index.js - Version 6.2 ---");
 
 let scanInterval = null;
 let allSongs = [], currentPlaylist = [], currentIndex = -1;
@@ -13,6 +13,7 @@ let pendingNextIndex = -1;
 let isPreloaded = false;
 let lastSavedSecond = -1;
 let tempPreloadIds = JSON.parse(localStorage.getItem('temp_preloads') || '[]');
+let errorRetries = 0;
 
 function saveTempList() {
     localStorage.setItem('temp_preloads', JSON.stringify(tempPreloadIds));
@@ -252,6 +253,7 @@ function prepareNextSong() {
 // --- 3. CORE: LOAD & PLAY SONG (OFFLINE UPGRADE) ---
 
 async function loadSong(song, autoPlay = true) {
+    errorRetries = 0;
     currentPlayingId = song.id;
     updatePlayerUI(song);
     updateMediaSession(song);
@@ -1082,7 +1084,7 @@ function toggleDownloaderView() {
 
 audio.addEventListener('error', (e) => {
     if (audio.error && (audio.error.code === 4 || audio.error.code === 3)) {
-        console.warn("⚠️ Bài hát lỗi hoặc phản hồi đệm chưa kịp.");
+        console.warn(`⚠️ Lỗi audio (Code: ${audio.error.code}). Số lần thử lại: ${errorRetries}`);
         
         if (!navigator.onLine) {
             showStatus("⚠️ Mất mạng! Đang tìm bài hát Offline...", 3000);
@@ -1090,28 +1092,27 @@ audio.addEventListener('error', (e) => {
             return;
         }
 
-        // --- CẬP NHẬT TRÁNH NHẢY BÀI VÔ LÝ ---
-        // Nếu bài hát đang phát chưa được cache, khả năng cao là kết nối Google Drive bị nghẽn nhẹ lúc đầu.
-        // Thay vì bỏ qua bài, ta giữ giao diện và tự động thử lại chính bài này sau 2.5 giây
-        // (Lúc này ở Backend file .temp đã được tạo xong và sẵn sàng).
         const currentSong = currentPlaylist[currentIndex];
-        if (currentSong && !currentSong.is_cached) {
-            showStatus("🔄 Bộ đệm bị gián đoạn, đang tự động kết nối lại...", 3000);
-            
-            // Đánh dấu là bài hát đã bắt đầu có cache ngầm để lần sau không lặp lại thông báo thiết lập
-            currentSong.is_cached = true; 
-            
-            setTimeout(() => {
-                if (currentPlayingId === currentSong.id) {
-                    // Nạp lại vị trí giây hiện tại trước khi lỗi để nghe tiếp liên tục
-                    currentSong.current_time = audio.currentTime;
-                    loadSong(currentSong, isPlaying);
-                }
-            }, 2500);
-            return;
+        // Nếu bài chưa cache và không phải file lưu sẵn trong máy
+        if (currentSong && !audio.src.startsWith('blob:')) {
+            if (errorRetries < 3) { // Cho phép thử lại 3 lần (đủ để Cache chạy ngầm xong)
+                errorRetries++;
+                showStatus(`🔄 Liên kết không ổn định, đang thử lại (${errorRetries}/3)...`, 3000);
+                
+                setTimeout(() => {
+                    if (currentPlayingId === currentSong.id) {
+                        const savedTime = audio.currentTime;
+                        // Nạp lại src để ép trình duyệt gọi Server lần nữa
+                        audio.src = `/stream/${currentSong.id}?t=${Date.now()}`;
+                        audio.currentTime = savedTime;
+                        audio.play().catch(()=>{});
+                    }
+                }, 3000);
+                return;
+            }
         }
 
-        // Nếu là lỗi file hỏng thực sự (đã thử lại mà vẫn fail), tiến hành bỏ qua như cũ
+        // Nếu đã thử quá 3 lần mà vẫn lỗi thì mới bỏ qua bài
         if (typeof showStatus === 'function') {
             showStatus("⚠️ Lỗi dữ liệu bài hát thực tế. Đang bỏ qua...", 3000);
         }
@@ -1126,7 +1127,6 @@ audio.addEventListener('error', (e) => {
         } else {
             playNext();
         }
-        // -------------------------------------
     }
 });
 
