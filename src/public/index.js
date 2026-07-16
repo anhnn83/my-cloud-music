@@ -1095,9 +1095,9 @@ audio.addEventListener('error', (e) => {
         const currentSong = currentPlaylist[currentIndex];
         // Nếu bài chưa cache và không phải file lưu sẵn trong máy
         if (currentSong && !audio.src.startsWith('blob:')) {
-            if (errorRetries < 3) { // Cho phép thử lại 3 lần (đủ để Cache chạy ngầm xong)
+            if (errorRetries < 5) { // Cho phép thử lại 5 lần
                 errorRetries++;
-                showStatus(`🔄 Liên kết không ổn định, đang thử lại (${errorRetries}/3)...`, 3000);
+                showStatus(`🔄 Liên kết không ổn định, đang thử lại (${errorRetries}/5)...`, 4000);
                 
                 setTimeout(() => {
                     if (currentPlayingId === currentSong.id) {
@@ -1107,14 +1107,14 @@ audio.addEventListener('error', (e) => {
                         audio.currentTime = savedTime;
                         audio.play().catch(()=>{});
                     }
-                }, 3000);
+                }, 4000);
                 return;
             }
         }
 
-        // Nếu đã thử quá 3 lần mà vẫn lỗi thì mới bỏ qua bài
+        // Nếu đã thử quá 5 lần mà vẫn lỗi thì mới bỏ qua bài
         if (typeof showStatus === 'function') {
-            showStatus("⚠️ Lỗi dữ liệu bài hát thực tế. Đang bỏ qua...", 3000);
+            showStatus("⚠️ Lỗi tải bài. Đang bỏ qua...", 3000);
         }
 
         if (currentPlaylist.length > 0 && currentIndex > -1) {
