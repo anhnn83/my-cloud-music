@@ -1,9 +1,10 @@
-// src/modules/streamer.js - Version 5.3
+// src/modules/streamer.js - Version 6.0 (PassThrough Stream)
 
 const fs = require('fs');
 const path = require('path');
 const drive = require('./drive');
 const { db } = require('./db');
+const { PassThrough } = require('stream'); // Thêm dòng này
 
 const CACHE_DIR = path.join(__dirname, '../../cache');
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR);
@@ -27,60 +28,81 @@ async function getSongStream(songId, rangeHeader = null, retryCount = 0) {
     const filename = `${songId}.mp3`;
     const filePath = path.join(CACHE_DIR, filename);
 
-    // CASE 1: ĐÃ CÓ FILE CACHE
+    // CASE 1: ĐÃ CÓ FILE CACHE HOÀN CHỈNH
     if (fs.existsSync(filePath)) {
         const stat = fs.statSync(filePath);
         if (stat.size < 10240 || !isValidMp3Header(filePath)) {
             console.log(`🗑️ File lỗi cache: ${songId}. Retry: ${retryCount}`);
             if (retryCount >= 1) {
                 try { fs.unlinkSync(filePath); } catch(e){}
-                // Nếu lỗi cache nặng, có thể file gốc cũng hỏng, nhưng tạm thời chỉ xóa cache
                 throw new Error('CORRUPT_FILE_ON_DRIVE');
             }
             try { fs.unlinkSync(filePath); } catch(e){}
-            return getSongStream(songId, retryCount + 1); 
+            return getSongStream(songId, rangeHeader, retryCount + 1); 
         }
         return { type: 'file', filename: filename };
     }
 
-    // CASE 2: STREAM TỪ DRIVE
+    // CASE 2: CHƯA CACHE -> MỞ 1 LUỒNG, CHIA 2 NHÁNH (PASSTHROUGH)
     else {
         try {
+            // Kiểm tra trạng thái file trên Drive
             const meta = await drive.files.get({ fileId: songId, fields: 'size, trashed', supportsAllDrives: true });
             if (meta.data.trashed) { deleteSong.run(songId); throw new Error('FILE_DELETED_ON_DRIVE'); }
             
             const fileSize = meta.data.size ? parseInt(meta.data.size) : null;
-            downloadInBackground(songId, fileSize);
-
-            // [VÁ LỖI] Chuyển tiếp tọa độ Tua (Range) cho Google Drive
+            
+            // Lấy stream trực tiếp từ Google Drive
             const driveHeaders = { 'Accept-Encoding': 'identity' };
-            if (rangeHeader) {
-                driveHeaders['Range'] = rangeHeader;
-            }
+            if (rangeHeader) driveHeaders['Range'] = rangeHeader;
 
             const res = await drive.files.get(
                 { fileId: songId, alt: 'media', supportsAllDrives: true },
                 { responseType: 'stream', headers: driveHeaders }
             );
 
+            // BỘ CHIA (PassThrough)
+            const passThroughStream = new PassThrough();
+            res.data.pipe(passThroughStream);
+
+            // Nếu user không tua nhạc (tải từ đầu), ta mới cho phép ghi cache vào ổ cứng
+            if (!rangeHeader) {
+                const tempPath = path.join(CACHE_DIR, `${songId}.temp`);
+                const writeStream = fs.createWriteStream(tempPath);
+                
+                // Nhánh 2: Ghi vào file temp
+                passThroughStream.pipe(writeStream);
+
+                // Khi tải xong, đổi tên thành file chính thức
+                writeStream.on('finish', () => {
+                    try {
+                        const stat = fs.statSync(tempPath);
+                        if (fileSize && stat.size < fileSize * 0.9) fs.unlinkSync(tempPath);
+                        else fs.renameSync(tempPath, filePath);
+                    } catch(e) {}
+                });
+                
+                writeStream.on('error', () => {
+                    if(fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+                });
+            }
+
+            // Trả Nhánh 1 về cho App (để ném cho Frontend)
             return {
                 type: 'stream',
-                stream: res.data,
+                stream: passThroughStream,
                 headers: {
                     'Content-Type': 'audio/mpeg',
                     'Content-Length': res.headers['content-length'] || fileSize,
-                    'Content-Range': res.headers['content-range'], // Chuyển tiếp cự ly
+                    'Content-Range': res.headers['content-range'],
                     'Accept-Ranges': 'bytes'
                 },
-                status: res.status // Sẽ trả về 206 Partial Content để điện thoại hiểu là đang Tua
+                status: res.status
             };
 
         } catch (error) {
             console.error(`❌ Stream Error ${songId}:`, error.message);
-            
-            // [LOGIC 2] Nếu lỗi 404 (Không tìm thấy trên Drive) -> Xóa khỏi DB ngay
             if (error.code === 404 || (error.response && error.response.status === 404)) {
-                console.log(`🗑️ File ${songId} không còn trên Drive (404) -> Xóa khỏi DB.`);
                 deleteSong.run(songId); 
                 throw new Error('FILE_DELETED_ON_DRIVE');
             }
@@ -89,6 +111,7 @@ async function getSongStream(songId, rangeHeader = null, retryCount = 0) {
     }
 }
 
+// Giữ lại hành vi preload song khi nhấn nút "Tải về" (Không thay đổi)
 async function preloadSong(songId) {
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     if (fs.existsSync(filePath)) return; 
@@ -100,7 +123,6 @@ async function preloadSong(songId) {
 }
 
 async function downloadInBackground(songId, expectedSize) {
-    // ... (Giữ nguyên logic download cũ)
     const filePath = path.join(CACHE_DIR, `${songId}.mp3`);
     const tempPath = path.join(CACHE_DIR, `${songId}.temp`);
     if (fs.existsSync(tempPath) || fs.existsSync(filePath)) return;
